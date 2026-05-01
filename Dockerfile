@@ -19,7 +19,7 @@ COPY . .
 RUN mkdir -p /data /app/logs
 
 # Set proper permissions
-RUN chmod +x start.sh build.sh
+RUN chmod +x start.sh
 
 EXPOSE 8000
 

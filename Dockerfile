@@ -19,9 +19,9 @@ COPY . .
 RUN mkdir -p /data /app/logs
 
 # Set proper permissions
-RUN chmod +x start.sh
+RUN chmod +x start.sh docker-entrypoint.sh
 
 EXPOSE 8000
 
-# Use CMD with exec form to ensure environment variables are passed correctly
-CMD ["sh", "start.sh"]
+# Use entrypoint script for proper environment variable handling
+ENTRYPOINT ["sh", "docker-entrypoint.sh"]

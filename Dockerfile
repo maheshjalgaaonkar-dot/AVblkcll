@@ -4,7 +4,6 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
         libgomp1 \
         libglib2.0-0 \
         libsndfile1 \
-        curl \
     && rm -rf /var/lib/apt/lists/*
 
 WORKDIR /app
@@ -15,13 +14,9 @@ RUN pip install --no-cache-dir --upgrade pip \
 
 COPY . .
 
-# Create data directory for any local files (though we use Supabase as primary DB)
 RUN mkdir -p /data /app/logs
-
-# Set proper permissions
-RUN chmod +x start.sh docker-entrypoint.sh
+RUN chmod +x start.sh
 
 EXPOSE 8000
 
-# Use entrypoint script for proper environment variable handling
-ENTRYPOINT ["sh", "docker-entrypoint.sh"]
+CMD ["sh", "start.sh"]

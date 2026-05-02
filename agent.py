@@ -167,7 +167,7 @@ class OutboundAssistant(Agent):
     def __init__(self, instructions: str):
         super().__init__(
             instructions=instructions,
-            vad=silero.VAD(min_speech_duration=0.2, min_silence_duration=0.5),
+            vad=silero.VAD(),
             noise_cancellation=noise_cancellation.BVCTelephony(),
         )
 

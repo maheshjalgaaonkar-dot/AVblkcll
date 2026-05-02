@@ -118,6 +118,11 @@ class StatusRequest(BaseModel):
 
 # ── Dashboard ─────────────────────────────────────────────────────────────────
 
+@app.get("/health")
+async def health_check():
+    return {"status": "healthy", "service": "outboundai"}
+
+
 @app.get("/", response_class=HTMLResponse)
 async def serve_dashboard():
     html_path = Path(__file__).parent / "ui" / "index.html"

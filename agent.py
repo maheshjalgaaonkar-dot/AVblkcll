@@ -120,7 +120,6 @@ def _build_session(tools: list, system_prompt: str) -> AgentSession:
             api_key = os.getenv("GOOGLE_API_KEY", "")
             if not api_key:
                 raise ValueError("GOOGLE_API_KEY not set")
-            genai.configure(api_key=api_key)
 
             realtime_cls = _google_realtime or _google_beta_realtime
             model = realtime_cls(
@@ -263,13 +262,12 @@ async def entrypoint(ctx: agents.JobContext) -> None:
         _session_kwargs = dict(
             room=ctx.room,
             agent=OutboundAssistant(instructions=system_prompt),
-            room_options=_RO(input_options=RoomInputOptions()),
+            room_options=_RO(),
         )
     else:
         _session_kwargs = dict(
             room=ctx.room,
             agent=OutboundAssistant(instructions=system_prompt),
-            room_input_options=RoomInputOptions(),
         )
 
     try:

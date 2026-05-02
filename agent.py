@@ -225,7 +225,13 @@ async def entrypoint(ctx: agents.JobContext) -> None:
 
     await _log("info", f"Connected to LiveKit room: {ctx.room.name}")
 
-    # ── Dial — MUST come before session.start() ──────────────────────────────
+    # ── Build AI session BEFORE dialing (to eliminate first response delay) ──
+    gemini_model = os.getenv("GEMINI_MODEL", "gemini-3.1-flash-live-preview")
+    await _log("info", f"Building AI session — model={gemini_model}")
+    await _log("info", f"Tools loaded: {[t.__name__ for t in active_tools]}")
+    session = _build_session(tools=active_tools, system_prompt=system_prompt)
+
+    # ── Dial — session will start after call is answered ─────────────────────
     if phone_number:
         trunk_id = os.getenv("OUTBOUND_TRUNK_ID")
         if not trunk_id:
@@ -248,12 +254,6 @@ async def entrypoint(ctx: agents.JobContext) -> None:
             ctx.shutdown()
             return
         await _log("info", f"Call ANSWERED — {phone_number} picked up, starting AI session now")
-
-    # ── Build and start Gemini Live ──────────────────────────────────────────
-    gemini_model = os.getenv("GEMINI_MODEL", "gemini-3.1-flash-live-preview")
-    await _log("info", f"Building AI session — model={gemini_model}")
-    await _log("info", f"Tools loaded: {[t.__name__ for t in active_tools]}")
-    session = _build_session(tools=active_tools, system_prompt=system_prompt)
 
     # Use RoomOptions if available (non-deprecated), else fall back
     # NEVER use close_on_disconnect=True with SIP — drops on any audio blip

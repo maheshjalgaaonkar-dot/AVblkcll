@@ -156,7 +156,7 @@ def _build_session(tools: list, system_prompt: str) -> AgentSession:
         return AgentSession(
             stt=_deepgram_stt,
             llm=_google_llm,
-            tts=_google_tts.with_voice(voice_name),
+            tts=_google_tts,
             tools=tools,
         )
 

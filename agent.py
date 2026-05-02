@@ -115,8 +115,8 @@ def _build_session(tools: list, system_prompt: str) -> AgentSession:
     # Try Gemini Live (native audio) first
     if use_realtime and (_google_realtime or _google_beta_realtime):
         try:
-            import google.generativeai as genai
-            from google.generativeai import types as _gt
+            import google.genai as genai
+            from google.genai import types as _gt
             api_key = os.getenv("GOOGLE_API_KEY", "")
             if not api_key:
                 raise ValueError("GOOGLE_API_KEY not set")

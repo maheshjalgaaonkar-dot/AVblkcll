@@ -137,7 +137,6 @@ def _build_session(tools: list, system_prompt: str) -> AgentSession:
                     automatic_activity_detection=_gt.AutomaticActivityDetection(
                         end_of_speech_sensitivity=_gt.EndSensitivity.END_SENSITIVITY_LOW,
                         silence_duration_ms=2000,
-                        prefix_padding_ms=200,
                     ),
                 ),
             )
@@ -148,6 +147,8 @@ def _build_session(tools: list, system_prompt: str) -> AgentSession:
             )
         except Exception as exc:
             logger.warning("Gemini Live setup failed, falling back to pipeline: %s", exc)
+    else:
+        logger.info("Gemini Live not available or disabled, using pipeline fallback")
 
     # Pipeline fallback (STT → LLM → TTS)
     if _google_llm and _deepgram_stt and _google_tts:
@@ -273,8 +274,13 @@ async def entrypoint(ctx: agents.JobContext) -> None:
             room_input_options=RoomInputOptions(noise_cancellation=noise_cancellation.BVCTelephony()),
         )
 
-    await session.start(**_session_kwargs)
-    await _log("info", "Agent session started — AI ready, generating greeting")
+    try:
+        await session.start(**_session_kwargs)
+        await _log("info", "Agent session started — AI ready, generating greeting")
+    except Exception as exc:
+        await _log("error", f"Session start failed: {exc}")
+        ctx.shutdown()
+        return
 
     # ── Optional S3 recording ────────────────────────────────────────────────
     if phone_number:

@@ -18,21 +18,22 @@
 }
 *{margin:0;padding:0;box-sizing:border-box}
 body{background:var(--bg);color:var(--text);font-family:var(--sans);min-height:100vh;line-height:1.6;font-size:14px;display:flex}
-.container{flex:1;max-width:1400px;margin:0;padding:32px;padding-right:252px}
+.container{flex:1;max-width:1600px;margin:0;padding:32px 32px 32px 272px;width:calc(100% - 272px)}
 header{display:flex;justify-content:space-between;align-items:center;padding:0 0 24px;margin-bottom:24px}
 h1{font-size:28px;font-weight:600;color:var(--text);letter-spacing:-0.5px}
 h2{font-size:18px;font-weight:600;color:var(--text);margin-bottom:16px;letter-spacing:-0.3px}
 .sidebar{width:240px;background:var(--card);border-right:1px solid var(--border);padding:24px 0;display:flex;flex-direction:column;position:fixed;top:0;left:0;height:100vh;overflow-y:auto;z-index:100}
 .sidebar-header{padding:0 24px 24px;border-bottom:1px solid var(--border);margin-bottom:16px}
 .sidebar-header h1{font-size:16px;font-weight:600;color:var(--accent);margin:0;letter-spacing:-0.2px}
-.sidebar-actions{padding:0 24px 16px;display:flex;gap:8px;align-items:center}
-.sidebar-actions span.user-display{flex:1;color:var(--text2);font-size:12px}
-.sidebar-actions button{padding:8px 12px;background:var(--bg);color:var(--text);border:1px solid var(--border);border-radius:6px;cursor:pointer;font-size:12px;transition:all 0.2s}
+.sidebar-actions{padding:0 24px 16px;display:flex;gap:8px;align-items:center;flex-wrap:wrap}
+.sidebar-actions span.user-display{flex:1;color:var(--text2);font-size:12px;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.sidebar-actions button{padding:8px 12px;background:var(--bg);color:var(--text);border:1px solid var(--border);border-radius:6px;cursor:pointer;font-size:12px;transition:all 0.2s;white-space:nowrap}
 .sidebar-actions button:hover{background:var(--border);color:var(--text)}
 nav{display:flex;flex-direction:column;gap:2px;padding:0 12px}
-nav button{padding:12px 16px;background:transparent;color:var(--text2);border:none;border-radius:8px;cursor:pointer;text-align:left;white-space:nowrap;font-size:13px;font-weight:500;transition:all 0.2s;display:flex;align-items:center;gap:12px}
+nav button{padding:12px 16px;background:transparent;color:var(--text2);border:none;border-radius:8px;cursor:pointer;text-align:left;white-space:nowrap;font-size:13px;font-weight:500;transition:all 0.2s;display:flex;align-items:center;gap:12px;min-height:44px}
 nav button:hover{background:var(--bg);color:var(--text)}
 nav button.active{background:var(--accent-light);color:var(--accent)}
+nav button svg{flex-shrink:0}
 .card{background:var(--card);border:1px solid var(--border);border-radius:16px;padding:24px;margin-bottom:24px;box-shadow:var(--shadow)}
 .card h2{color:var(--text);margin-bottom:20px;font-size:16px;font-weight:600;letter-spacing:-0.2px}
 .grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(240px,1fr));gap:20px}
@@ -81,11 +82,17 @@ tr:hover{background:var(--bg)}
 .modal-close:hover{color:var(--text)}
 .form-row{display:grid;grid-template-columns:1fr 1fr;gap:20px}
 .form-row-3{display:grid;grid-template-columns:1fr 1fr 1fr;gap:20px}
+@media (max-width:1400px){
+  .container{max-width:1200px}
+}
+@media (max-width:1200px){
+  .container{max-width:100%;padding:32px 32px 32px 272px}
+}
 @media (max-width:1024px){
-  .container{padding-right:20px}
-  .sidebar{transform:translateX(-100%);transition:transform 0.3s}
+  .container{padding:20px;padding-left:20px}
+  .sidebar{transform:translateX(-100%);transition:transform 0.3s ease}
   .sidebar.open{transform:translateX(0)}
-  .mobile-menu-btn{display:block}
+  .mobile-menu-btn{display:flex;position:fixed;top:20px;left:20px;z-index:200;padding:12px;background:var(--card);border:1px solid var(--border);border-radius:8px;cursor:pointer;color:var(--text)}
 }
 @media (min-width:1025px){
   .mobile-menu-btn{display:none}
@@ -95,6 +102,23 @@ tr:hover{background:var(--bg)}
   .container{padding:16px}
   .grid{grid-template-columns:1fr}
   .sidebar{width:280px}
+  h1{font-size:24px}
+  h2{font-size:16px}
+  .card{padding:20px}
+  .form-row-3{grid-template-columns:1fr}
+}
+@media (max-width:480px){
+  .container{padding:12px}
+  header{padding-bottom:16px;margin-bottom:16px}
+  h1{font-size:20px}
+  .card{padding:16px}
+  .grid{gap:16px}
+  .kpi{padding:20px}
+  .kpi-value{font-size:28px}
+  button{padding:12px 20px}
+}
+@media (max-width:360px){
+  .sidebar{width:100%}
 }
 </style>
 <link rel="preconnect" href="https://fonts.googleapis.com">
@@ -102,6 +126,11 @@ tr:hover{background:var(--bg)}
 <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
 </head>
 <body>
+<!-- Mobile Menu Button -->
+<button class="mobile-menu-btn" onclick="toggleSidebar()">
+  <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="3" y1="12" x2="21" y2="12"/><line x1="3" y1="6" x2="21" y2="6"/><line x1="3" y1="18" x2="21" y2="18"/></svg>
+</button>
+
 <!-- Left Sidebar -->
 <div class="sidebar">
   <div class="sidebar-header">
@@ -667,6 +696,25 @@ async function loadUserInfo() {
 window.addEventListener('load', () => {
     if (checkAuth()) {
         loadUserInfo();
+    }
+});
+
+// Toggle sidebar on mobile
+function toggleSidebar() {
+    const sidebar = document.querySelector('.sidebar');
+    if (sidebar) {
+        sidebar.classList.toggle('open');
+    }
+}
+
+// Close sidebar when clicking outside on mobile
+document.addEventListener('click', (e) => {
+    if (window.innerWidth <= 1024) {
+        const sidebar = document.querySelector('.sidebar');
+        const menuBtn = document.querySelector('.mobile-menu-btn');
+        if (sidebar && !sidebar.contains(e.target) && !menuBtn.contains(e.target)) {
+            sidebar.classList.remove('open');
+        }
     }
 });
 

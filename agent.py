@@ -110,7 +110,15 @@ def _build_session(tools: list, system_prompt: str) -> AgentSession:
     """
     model_name = os.getenv("GEMINI_MODEL", "gemini-3.1-flash-live-preview")
     voice_name = os.getenv("GEMINI_TTS_VOICE", "Aoede")
-    use_realtime = os.getenv("USE_GEMINI_REALTIME", "true").lower() == "true"
+    
+    # Auto-detect if model is native audio or standard
+    # Native audio models: gemini-3.1-flash-live-preview, gemini-2.5-flash-native-audio-preview-12-2025
+    # Standard models: gemini-2.5-flash, gemini-1.5-flash, etc.
+    native_audio_models = ["gemini-3.1-flash-live-preview", "gemini-2.5-flash-native-audio-preview-12-2025"]
+    is_native_audio_model = any(model_name.startswith(native) for native in native_audio_models)
+    
+    # Use realtime only for native audio models
+    use_realtime = is_native_audio_model and os.getenv("USE_GEMINI_REALTIME", "true").lower() == "true"
 
     # Try Gemini Live (native audio) first
     if use_realtime and (_google_realtime or _google_beta_realtime):

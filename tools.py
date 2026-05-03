@@ -33,6 +33,7 @@ class AppointmentTools(llm.ToolContext):
         self._call_start_time = time.time()
         self._sip_domain = os.getenv("VOBIZ_SIP_DOMAIN", "")
         self.recording_url: Optional[str] = None
+        self._call_logged = False  # Track if AI called end_call tool
         super().__init__(tools=[])
 
     def build_tool_list(self, enabled: list) -> list:
@@ -90,6 +91,7 @@ class AppointmentTools(llm.ToolContext):
                 lead_name=self.lead_name, outcome=outcome, reason=reason,
                 duration_seconds=duration, recording_url=self.recording_url,
             )
+            self._call_logged = True  # Mark that AI logged the call
         except Exception as exc:
             logger.error("Failed to log call: %s", exc)
         try:

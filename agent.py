@@ -350,10 +350,32 @@ async def entrypoint(ctx: agents.JobContext) -> None:
     if phone_number:
         _sip_identity = f"sip_{phone_number}"
         _disconnect_event = asyncio.Event()
+        _call_logged = False
+
+        async def _log_call_on_disconnect():
+            """Log call automatically when participant disconnects (if not already logged by AI)"""
+            nonlocal _call_logged
+            # Check if AI already logged the call via end_call tool
+            if not tool_ctx._call_logged:
+                try:
+                    duration = int(time.time() - tool_ctx._call_start_time)
+                    from db import log_call as db_log_call
+                    await db_log_call(
+                        phone_number=phone_number,
+                        lead_name=lead_name,
+                        outcome="disconnected",
+                        reason="Call ended by participant",
+                        duration_seconds=duration,
+                        recording_url=tool_ctx.recording_url,
+                    )
+                    await _log("info", f"Auto-logged call for {phone_number} (duration: {duration}s)")
+                except Exception as exc:
+                    await _log("warning", f"Failed to auto-log call: {exc}")
 
         def _on_participant_disconnected(participant: rtc.RemoteParticipant):
             if participant.identity == _sip_identity:
                 _disconnect_event.set()
+
         def _on_disconnected():
             _disconnect_event.set()
 
@@ -364,6 +386,9 @@ async def entrypoint(ctx: agents.JobContext) -> None:
             await asyncio.wait_for(_disconnect_event.wait(), timeout=3600)
         except asyncio.TimeoutError:
             await _log("warning", "Call reached 1-hour safety timeout — shutting down")
+
+        # Auto-log call if not already logged by AI
+        await _log_call_on_disconnect()
 
         await _log("info", f"SIP participant disconnected — ending session for {phone_number}")
         await session.aclose()

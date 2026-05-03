@@ -314,20 +314,16 @@ async def entrypoint(ctx: agents.JobContext) -> None:
                 await _log("warning", f"Recording start failed (non-fatal): {_exc}")
 
     # ── Greeting ─────────────────────────────────────────────────────────────
-    # gemini-3.1 and gemini-2.5 native-audio speak autonomously from system prompt.
-    # generate_reply() is blocked by the plugin for these models — skip it entirely.
-    _active_model = os.getenv("GEMINI_MODEL", "")
-    if "3.1" in _active_model or "2.5" in _active_model:
-        await _log("info", "Gemini native-audio: model will greet autonomously from system prompt")
-    else:
-        greeting = (
-            f"The call just connected. Greet the lead and ask if you're speaking with {lead_name}."
-            if phone_number else "Greet the caller warmly."
-        )
-        try:
-            await session.generate_reply(instructions=greeting)
-        except Exception as _gr_exc:
-            await _log("warning", f"generate_reply failed: {_gr_exc}")
+    # Force immediate greeting for all models to ensure AI speaks right away
+    greeting = (
+        f"The call just connected. Greet the lead and ask if you're speaking with {lead_name}."
+        if phone_number else "Greet the caller warmly."
+    )
+    try:
+        await session.generate_reply(instructions=greeting)
+        await _log("info", "Greeting triggered successfully")
+    except Exception as _gr_exc:
+        await _log("warning", f"generate_reply failed: {_gr_exc}")
 
     # ── Keep session alive until SIP participant actually leaves ─────────────
     # Without this block, the entrypoint returns and the process spins down.

@@ -242,21 +242,11 @@ async def entrypoint(ctx: agents.JobContext) -> None:
 
     await _log("info", f"Connected to LiveKit room: {ctx.room.name}")
 
-    # ── Step 3: Pre-generate greeting in system prompt (before session starts) ──
-    # Inject greeting into system prompt so AI speaks immediately on session start
-    greeting = f"नमस्ते {lead_name} जी, मैं शुभ बोल रहा हूँ, महेश बिल्डर से, अभी-अभी आपने अंधेरी ईस्ट, जेबी नगर प्रोजेक्ट के लिए enquiry डाली थी… तो मैं तुरंत आपसे जुड़ रहा हूँ, आपकी requirement समझने के लिए… क्या अभी बात कर सकते हैं ?"
-    
-    # Add greeting instruction to system prompt
-    # This ensures AI speaks immediately when session starts
-    modified_system_prompt = f"{system_prompt}\n\nCRITICAL: Start the conversation immediately with this exact greeting, without waiting for the caller to speak first: {greeting}"
-    
-    await _log("info", "Greeting injected into system prompt for immediate speech")
-
     # ── Build AI session BEFORE dialing (to save time) ──
     gemini_model = os.getenv("GEMINI_MODEL", "gemini-3.1-flash-live-preview")
     await _log("info", f"Building AI session — model={gemini_model}")
     await _log("info", f"Tools loaded: {[t.__name__ for t in active_tools]}")
-    session = _build_session(tools=active_tools, system_prompt=modified_system_prompt)
+    session = _build_session(tools=active_tools, system_prompt=system_prompt)
 
     # ── Dial — session will start after call is answered ─────────────────────
     if phone_number:
@@ -338,9 +328,21 @@ async def entrypoint(ctx: agents.JobContext) -> None:
         ctx.shutdown()
         return
 
-    # ── Greeting is handled via system prompt injection before session start ──
-    # The AI will speak immediately when session starts due to the CRITICAL instruction
-    # Note: Gemini Live is reactive and may still wait for audio input before speaking
+    # ── Send greeting immediately after session starts ─────────────────────────
+    # Gemini Live is reactive, so we need to send audio to trigger the greeting
+    # We'll send a brief silence/audio to wake up the model
+    await _log("info", "Sending initial audio to trigger greeting")
+    
+    # Send a brief audio frame to trigger the model to speak the greeting
+    # This is necessary because Gemini Live waits for audio input before responding
+    try:
+        # Create a brief silence audio frame (10ms of silence)
+        import numpy as np
+        silence_frame = np.zeros(1600, dtype=np.int16)  # 10ms at 16kHz
+        await session.send_audio(silence_frame.tobytes())
+        await asyncio.sleep(0.1)  # Small delay to allow the model to process
+    except Exception as exc:
+        await _log("warning", f"Failed to send initial audio frame: {exc}")
 
     # ── Keep session alive until SIP participant actually leaves ─────────────
     # Without this block, the entrypoint returns and the process spins down.

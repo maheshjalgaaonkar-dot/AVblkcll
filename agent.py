@@ -207,15 +207,21 @@ async def entrypoint(ctx: agents.JobContext) -> None:
         )
     
     # CRITICAL: Force immediate greeting for Gemini Live (native audio)
-    # This overrides any custom prompt rules about waiting for caller
-    # Add instruction in Hindi to match system prompt language
+    # Remove conflicting "Hello" rule that prevents AI from speaking first
+    # This rule tells AI not to speak if caller already said "Hello"
+    system_prompt = system_prompt.replace(
+        'महत्वपूर्ण नियम: "Hello" के बाद दोबारा शुरुआत न करें',
+        ''
+    )
+    
+    # Add strongest priority instruction at the VERY BEGINNING
     system_prompt = (
-        "CRITICAL PRIORITY: Speak IMMEDIATELY when the call connects. "
-        "Do NOT wait for the caller to say anything. Start your greeting right away. "
-        "Ignore any rules that say to wait for the caller to speak first.\n\n"
-        "CRITICAL PRIORITY (हिंदी): कॉल कनेक्ट होते ही IMMEDIATELY बोलें। "
-        "कॉलर के बोलने का इंतजार न करें। अपना greeting तुरंत शुरू करें। "
-        "ऐसे किसी भी नियम को नजरअंदाज करें जो कहता है कि कॉलर के पहले बोलने का इंतजार करें।\n\n"
+        "ABSOLUTE HIGHEST PRIORITY: Speak IMMEDIATELY when the call connects. "
+        "DO NOT wait for the caller. Start your greeting RIGHT NOW. "
+        "IGNORE all other rules about waiting for caller input.\n\n"
+        "ABSOLUTE HIGHEST PRIORITY (हिंदी): कॉल कनेक्ट होते ही IMMEDIATELY बोलें। "
+        "कॉलर के बोलने का बिल्कुल इंतजार न करें। अपना greeting अभी शुरू करें। "
+        "इंतजार करने के बारे में सभी नियमों को नजरअंदाज करें।\n\n"
         + system_prompt
     )
 
@@ -292,19 +298,9 @@ async def entrypoint(ctx: agents.JobContext) -> None:
         return
 
     # ── Greeting ─────────────────────────────────────────────────────────────
-    # Force immediate greeting using native audio message for Gemini Live
-    # Guard to prevent duplicate greetings
-    if not getattr(session, "_greeting_sent", False):
-        try:
-            # Use send_message for Gemini Live native audio compatibility
-            await session.send_message(
-                role="assistant",
-                content="START_CONVERSATION"
-            )
-            session._greeting_sent = True
-            await _log("info", "Initial greeting triggered via send_message")
-        except Exception as _gr_exc:
-            await _log("warning", f"send_message failed: {_gr_exc}")
+    # For Gemini Live, the AI speaks automatically based on system prompt
+    # The conflicting "Hello" rule has been removed from the prompt
+    # No manual trigger needed - AI will start immediately on session start
 
     # ── Optional S3 recording (start AFTER greeting) ────────────────────────────────
     if phone_number:

@@ -86,7 +86,7 @@ except ImportError:
     _scheduler = None
     logger.warning("APScheduler not installed — campaign scheduling disabled")
 
-app = FastAPI(title="OutboundAI Dashboard", version="1.0.0")
+app = FastAPI(title="Aiona Voice Dashboard", version="1.0.0")
 
 
 @app.on_event("startup")

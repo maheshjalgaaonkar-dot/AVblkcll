@@ -101,7 +101,7 @@ except ImportError:
 
 def _build_session(tools: list, system_prompt: str) -> AgentSession:
     """
-    Build AgentSession with Gemini Live or pipeline fallback.
+    Build AgentSession with Gemini Live.
 
     CRITICAL SILENCE-PREVENTION CONFIG — all 3 required:
     1. SessionResumptionConfig(transparent=True) — auto-reconnect on timeout
@@ -110,15 +110,7 @@ def _build_session(tools: list, system_prompt: str) -> AgentSession:
     """
     model_name = os.getenv("GEMINI_MODEL", "gemini-3.1-flash-live-preview")
     voice_name = os.getenv("GEMINI_TTS_VOICE", "Aoede")
-    
-    # Auto-detect if model is native audio or standard
-    # Native audio models: gemini-3.1-flash-live-preview, gemini-2.5-flash-native-audio-preview-12-2025
-    # Standard models: gemini-2.5-flash, gemini-1.5-flash, etc.
-    native_audio_models = ["gemini-3.1-flash-live-preview", "gemini-2.5-flash-native-audio-preview-12-2025"]
-    is_native_audio_model = any(model_name.startswith(native) for native in native_audio_models)
-    
-    # Use realtime only for native audio models
-    use_realtime = is_native_audio_model and os.getenv("USE_GEMINI_REALTIME", "true").lower() == "true"
+    use_realtime = os.getenv("USE_GEMINI_REALTIME", "true").lower() == "true"
 
     # Try Gemini Live (native audio) first
     if use_realtime and (_google_realtime or _google_beta_realtime):
@@ -154,33 +146,14 @@ def _build_session(tools: list, system_prompt: str) -> AgentSession:
             )
         except Exception as exc:
             logger.warning("Gemini Live setup failed, falling back to pipeline: %s", exc)
-    else:
-        logger.info("Gemini Live not available or disabled, using pipeline fallback")
 
     # Pipeline fallback (STT → LLM → TTS)
     if _google_llm and _deepgram_stt and _google_tts:
         logger.info("Using pipeline fallback (Deepgram STT + Gemini LLM + Google TTS)")
-        
-        # Instantiate Google LLM with model and API key
-        api_key = os.getenv("GOOGLE_API_KEY", "")
-        if not api_key:
-            raise ValueError("GOOGLE_API_KEY not set")
-        
-        google_llm_instance = _google_llm(
-            model=model_name,
-            api_key=api_key,
-        )
-        
-        # Instantiate Google TTS with voice
-        google_tts_instance = _google_tts(
-            voice=voice_name,
-            api_key=api_key,
-        )
-        
         return AgentSession(
             stt=_deepgram_stt,
-            llm=google_llm_instance,
-            tts=google_tts_instance,
+            llm=_google_llm,
+            tts=_google_tts,
             tools=tools,
         )
 
@@ -268,9 +241,6 @@ async def entrypoint(ctx: agents.JobContext) -> None:
     active_tools = tool_ctx.build_tool_list(enabled_tools)
 
     await _log("info", f"Connected to LiveKit room: {ctx.room.name}")
-
-    # ── CRITICAL: Connect to room before starting session ──
-    await ctx.connect()
 
     # ── Build AI session BEFORE dialing (to save time) ──
     gemini_model = os.getenv("GEMINI_MODEL", "gemini-3.1-flash-live-preview")

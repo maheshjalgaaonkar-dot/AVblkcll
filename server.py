@@ -462,6 +462,18 @@ async def api_update_agent_profile(profile_id: str, req: AgentProfileRequest, cu
     return {"status": "updated"}
 
 
+@app.patch("/api/agent-profiles/{profile_id}")
+async def api_patch_agent_profile(profile_id: str, req: AgentProfileRequest, current_user: dict = Depends(get_current_user)):
+    ok = await update_agent_profile(profile_id, {
+        "name": req.name, "voice": req.voice, "model": req.model,
+        "system_prompt": req.system_prompt, "enabled_tools": req.enabled_tools,
+        "is_default": 1 if req.is_default else 0,
+    })
+    if not ok:
+        raise HTTPException(404, "Profile not found")
+    return {"status": "updated"}
+
+
 @app.delete("/api/agent-profiles/{profile_id}")
 async def api_delete_agent_profile(profile_id: str, current_user: dict = Depends(get_current_user)):
     ok = await delete_agent_profile(profile_id)

@@ -242,11 +242,21 @@ async def entrypoint(ctx: agents.JobContext) -> None:
 
     await _log("info", f"Connected to LiveKit room: {ctx.room.name}")
 
+    # ── Step 3: Pre-generate greeting in system prompt (before session starts) ──
+    # Inject greeting into system prompt so AI speaks immediately on session start
+    greeting = f"नमस्ते {lead_name} जी, मैं शुभ बोल रहा हूँ, महेश बिल्डर से, अभी-अभी आपने अंधेरी ईस्ट, जेबी नगर प्रोजेक्ट के लिए enquiry डाली थी… तो मैं तुरंत आपसे जुड़ रहा हूँ, आपकी requirement समझने के लिए… क्या अभी बात कर सकते हैं ?"
+    
+    # Add greeting instruction to system prompt
+    # This ensures AI speaks immediately when session starts
+    modified_system_prompt = f"{system_prompt}\n\nCRITICAL: Start the conversation immediately with this exact greeting, without waiting for the caller to speak first: {greeting}"
+    
+    await _log("info", "Greeting injected into system prompt for immediate speech")
+
     # ── Build AI session BEFORE dialing (to save time) ──
     gemini_model = os.getenv("GEMINI_MODEL", "gemini-3.1-flash-live-preview")
     await _log("info", f"Building AI session — model={gemini_model}")
     await _log("info", f"Tools loaded: {[t.__name__ for t in active_tools]}")
-    session = _build_session(tools=active_tools, system_prompt=system_prompt)
+    session = _build_session(tools=active_tools, system_prompt=modified_system_prompt)
 
     # ── Dial — session will start after call is answered ─────────────────────
     if phone_number:
@@ -289,48 +299,45 @@ async def entrypoint(ctx: agents.JobContext) -> None:
 
     try:
         await session.start(**_session_kwargs)
-        await _log("info", "Agent session started — AI ready, generating greeting")
-        
-        # ── Trigger immediate greeting for Gemini Live ─────────────────────
-        # Gemini Live is reactive - waits for audio input before speaking
-        # No direct API exists to trigger proactive speech in Gemini Live
-        # System prompt instructions are the only mechanism, but may not work
-        await _log("info", "Gemini Live will speak based on system prompt instructions")
-        await _log("info", "If greeting doesn't start immediately, this is a Gemini Live limitation")
+        await _log("info", "Agent session started — AI ready")
     except Exception as exc:
         await _log("error", f"Session start FAILED: {exc}")
         ctx.shutdown()
         return
 
-    # ── Greeting ─────────────────────────────────────────────────────────────
-    # For Gemini Live, the AI speaks automatically based on system prompt
-    # No manual trigger needed - AI will start immediately on session start
+    # ── Step 1: Non-blocking recording (background task) ─────────────────────
+    # Start recording in background to avoid blocking greeting
+    async def _start_recording_async():
+        if phone_number:
+            _aws_key    = os.getenv("S3_ACCESS_KEY_ID") or os.getenv("AWS_ACCESS_KEY_ID", "")
+            _aws_secret = os.getenv("S3_SECRET_ACCESS_KEY") or os.getenv("AWS_SECRET_ACCESS_KEY", "")
+            _aws_bucket = os.getenv("S3_BUCKET") or os.getenv("AWS_BUCKET_NAME", "")
+            _s3_endpoint = os.getenv("S3_ENDPOINT_URL") or os.getenv("S3_ENDPOINT", "")
+            _s3_region  = os.getenv("S3_REGION") or os.getenv("AWS_REGION", "ap-northeast-1")
+            if _aws_key and _aws_secret and _aws_bucket:
+                try:
+                    _recording_path = f"recordings/{ctx.room.name}.ogg"
+                    _egress_req = api.RoomCompositeEgressRequest(
+                        room_name=ctx.room.name, audio_only=True,
+                        file_outputs=[api.EncodedFileOutput(
+                            file_type=api.EncodedFileType.OGG, filepath=_recording_path,
+                            s3=api.S3Upload(access_key=_aws_key, secret=_aws_secret,
+                                            bucket=_aws_bucket, region=_s3_region, endpoint=_s3_endpoint),
+                        )],
+                    )
+                    _egress = await ctx.api.egress.start_room_composite_egress(_egress_req)
+                    _s3_ep = _s3_endpoint.rstrip("/")
+                    tool_ctx.recording_url = (f"{_s3_ep}/{_aws_bucket}/{_recording_path}"
+                                               if _s3_ep else f"s3://{_aws_bucket}/{_recording_path}")
+                    await _log("info", f"Recording started: egress={_egress.egress_id}")
+                except Exception as _exc:
+                    await _log("warning", f"Recording start failed (non-fatal): {_exc}")
 
-    # ── Optional S3 recording (start AFTER greeting) ────────────────────────────────
-    if phone_number:
-        _aws_key    = os.getenv("S3_ACCESS_KEY_ID") or os.getenv("AWS_ACCESS_KEY_ID", "")
-        _aws_secret = os.getenv("S3_SECRET_ACCESS_KEY") or os.getenv("AWS_SECRET_ACCESS_KEY", "")
-        _aws_bucket = os.getenv("S3_BUCKET") or os.getenv("AWS_BUCKET_NAME", "")
-        _s3_endpoint = os.getenv("S3_ENDPOINT_URL") or os.getenv("S3_ENDPOINT", "")
-        _s3_region  = os.getenv("S3_REGION") or os.getenv("AWS_REGION", "ap-northeast-1")
-        if _aws_key and _aws_secret and _aws_bucket:
-            try:
-                _recording_path = f"recordings/{ctx.room.name}.ogg"
-                _egress_req = api.RoomCompositeEgressRequest(
-                    room_name=ctx.room.name, audio_only=True,
-                    file_outputs=[api.EncodedFileOutput(
-                        file_type=api.EncodedFileType.OGG, filepath=_recording_path,
-                        s3=api.S3Upload(access_key=_aws_key, secret=_aws_secret,
-                                        bucket=_aws_bucket, region=_s3_region, endpoint=_s3_endpoint),
-                    )],
-                )
-                _egress = await ctx.api.egress.start_room_composite_egress(_egress_req)
-                _s3_ep = _s3_endpoint.rstrip("/")
-                tool_ctx.recording_url = (f"{_s3_ep}/{_aws_bucket}/{_recording_path}"
-                                           if _s3_ep else f"s3://{_aws_bucket}/{_recording_path}")
-                await _log("info", f"Recording started: egress={_egress.egress_id}")
-            except Exception as _exc:
-                await _log("warning", f"Recording start failed (non-fatal): {_exc}")
+    # Start recording in background
+    asyncio.create_task(_start_recording_async())
+
+    # ── Greeting is now handled via system prompt injection before session start ──
+    # The AI will speak immediately when session starts due to the CRITICAL instruction
 
     # ── Keep session alive until SIP participant actually leaves ─────────────
     # Without this block, the entrypoint returns and the process spins down.

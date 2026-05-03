@@ -75,6 +75,8 @@ tr:hover{background:rgba(255,255,255,0.02)}
 <header>
 <h1>🤖 OutboundAI</h1>
 <div class="header-actions">
+<span id="user-display" style="margin-right:15px;color:var(--text2);font-size:13px;"></span>
+<button onclick="logout()" class="secondary">🚪 Logout</button>
 <button onclick="location.reload()">🔄 Refresh</button>
 </div>
 </header>
@@ -492,10 +494,107 @@ tr:hover{background:rgba(255,255,255,0.02)}
 <script>
 // Core utilities
 const $ = id => document.getElementById(id);
-const api = (path, opts) => fetch(path, opts).then(r => r.json());
-const apiPost = (path, body) => fetch(path, {method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify(body)});
-const apiDel  = path => fetch(path, {method:'DELETE'});
-const apiPatch = (path, body) => fetch(path, {method:'PATCH', headers:{'Content-Type':'application/json'}, body:JSON.stringify(body)});
+
+// Get auth token
+const getAuthToken = () => localStorage.getItem('auth_token');
+
+// API calls with authentication
+const api = (path, opts = {}) => {
+    const token = getAuthToken();
+    const headers = {
+        'Content-Type': 'application/json',
+        ...(token && { 'Authorization': `Bearer ${token}` })
+    };
+    return fetch(path, { ...opts, headers }).then(r => {
+        if (r.status === 401) {
+            logout();
+            throw new Error('Unauthorized');
+        }
+        return r.json();
+    });
+};
+
+const apiPost = (path, body) => {
+    const token = getAuthToken();
+    const headers = {
+        'Content-Type': 'application/json',
+        ...(token && { 'Authorization': `Bearer ${token}` })
+    };
+    return fetch(path, { method: 'POST', headers, body: JSON.stringify(body) }).then(r => {
+        if (r.status === 401) {
+            logout();
+            throw new Error('Unauthorized');
+        }
+        return r.json();
+    });
+};
+
+const apiDel = path => {
+    const token = getAuthToken();
+    const headers = token ? { 'Authorization': `Bearer ${token}` } : {};
+    return fetch(path, { method: 'DELETE', headers }).then(r => {
+        if (r.status === 401) {
+            logout();
+            throw new Error('Unauthorized');
+        }
+        return r.json();
+    });
+};
+
+const apiPatch = (path, body) => {
+    const token = getAuthToken();
+    const headers = {
+        'Content-Type': 'application/json',
+        ...(token && { 'Authorization': `Bearer ${token}` })
+    };
+    return fetch(path, { method: 'PATCH', headers, body: JSON.stringify(body) }).then(r => {
+        if (r.status === 401) {
+            logout();
+            throw new Error('Unauthorized');
+        }
+        return r.json();
+    });
+};
+
+// Authentication functions
+function checkAuth() {
+    const token = getAuthToken();
+    if (!token) {
+        window.location.href = '/ui/login';
+        return false;
+    }
+    return true;
+}
+
+async function logout() {
+    try {
+        await apiPost('/api/auth/logout', {});
+    } catch (e) {
+        console.error('Logout error:', e);
+    }
+    localStorage.removeItem('auth_token');
+    localStorage.removeItem('user');
+    window.location.href = '/ui/login';
+}
+
+async function loadUserInfo() {
+    try {
+        const user = await api('/api/auth/me');
+        const userDisplay = $('user-display');
+        if (userDisplay) {
+            userDisplay.textContent = `👤 ${user.username}`;
+        }
+    } catch (e) {
+        console.error('Failed to load user info:', e);
+    }
+}
+
+// Check authentication on page load
+window.addEventListener('load', () => {
+    if (checkAuth()) {
+        loadUserInfo();
+    }
+});
 
 function toast(msg, type='ok') {
     const toast = document.createElement('div');

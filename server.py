@@ -12,9 +12,13 @@ from pathlib import Path
 from typing import Optional
 
 from dotenv import load_dotenv
-from fastapi import FastAPI, HTTPException, Query, Request
+from fastapi import FastAPI, HTTPException, Query, Request, Depends
 from fastapi.responses import HTMLResponse, JSONResponse
+from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
 from pydantic import BaseModel
+import jwt
+import hashlib
+from datetime import datetime, timedelta
 
 _orig_ssl = ssl.create_default_context
 def _certifi_ssl(purpose=ssl.Purpose.SERVER_AUTH, **kwargs):
@@ -37,6 +41,40 @@ from prompts import DEFAULT_SYSTEM_PROMPT
 load_dotenv(".env", override=True)
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger("server")
+
+# ── Authentication Configuration ───────────────────────────────────────────────
+JWT_SECRET = os.getenv("JWT_SECRET", hashlib.sha256("default-secret-key-change-in-production".encode()).hexdigest())
+JWT_ALGORITHM = "HS256"
+JWT_EXPIRATION_HOURS = 24
+
+# Default admin credentials (can be overridden via environment variables)
+ADMIN_USERNAME = os.getenv("ADMIN_USERNAME", "admin")
+ADMIN_PASSWORD = os.getenv("ADMIN_PASSWORD", "admin123")  # Change this in production!
+
+security = HTTPBearer()
+
+def create_access_token(data: dict) -> str:
+    """Create JWT access token."""
+    to_encode = data.copy()
+    expire = datetime.utcnow() + timedelta(hours=JWT_EXPIRATION_HOURS)
+    to_encode.update({"exp": expire})
+    encoded_jwt = jwt.encode(to_encode, JWT_SECRET, algorithm=JWT_ALGORITHM)
+    return encoded_jwt
+
+def verify_token(credentials: HTTPAuthorizationCredentials = Depends(security)) -> dict:
+    """Verify JWT token and return payload."""
+    try:
+        payload = jwt.decode(credentials.credentials, JWT_SECRET, algorithms=[JWT_ALGORITHM])
+        return payload
+    except jwt.ExpiredSignatureError:
+        raise HTTPException(status_code=401, detail="Token has expired")
+    except jwt.JWTError:
+        raise HTTPException(status_code=401, detail="Invalid token")
+
+async def get_current_user(credentials: HTTPAuthorizationCredentials = Depends(security)) -> dict:
+    """Get current user from token."""
+    payload = verify_token(credentials)
+    return {"username": payload.get("sub"), "user_id": payload.get("user_id")}
 
 init_db()
 
@@ -116,6 +154,50 @@ class StatusRequest(BaseModel):
     status: str
 
 
+class LoginRequest(BaseModel):
+    username: str
+    password: str
+
+
+# ── Authentication ─────────────────────────────────────────────────────────────
+
+@app.get("/ui/login", response_class=HTMLResponse)
+async def serve_login():
+    html_path = Path(__file__).parent / "ui" / "login.html"
+    if html_path.exists():
+        return HTMLResponse(content=html_path.read_text(encoding="utf-8"))
+    return HTMLResponse("<h1>Login page not found</h1>", status_code=404)
+
+
+@app.post("/api/auth/login")
+async def api_login(req: LoginRequest):
+    """Authenticate user and return JWT token."""
+    if req.username != ADMIN_USERNAME or req.password != ADMIN_PASSWORD:
+        raise HTTPException(status_code=401, detail="Invalid username or password")
+    
+    token = create_access_token(
+        data={"sub": req.username, "user_id": "admin"}
+    )
+    
+    return {
+        "token": token,
+        "token_type": "bearer",
+        "user": {"username": req.username, "user_id": "admin"}
+    }
+
+
+@app.post("/api/auth/logout")
+async def api_logout():
+    """Logout endpoint (client-side token removal required)."""
+    return {"status": "logged out"}
+
+
+@app.get("/api/auth/me")
+async def api_get_current_user(current_user: dict = Depends(get_current_user)):
+    """Get current authenticated user."""
+    return current_user
+
+
 # ── Dashboard ─────────────────────────────────────────────────────────────────
 
 @app.get("/health")
@@ -134,7 +216,7 @@ async def serve_dashboard():
 # ── Call dispatch ─────────────────────────────────────────────────────────────
 
 @app.post("/api/call")
-async def api_dispatch_call(req: CallRequest):
+async def api_dispatch_call(req: CallRequest, current_user: dict = Depends(get_current_user)):
     url    = await eff("LIVEKIT_URL")
     key    = await eff("LIVEKIT_API_KEY")
     secret = await eff("LIVEKIT_API_SECRET")
@@ -200,12 +282,12 @@ async def api_dispatch_call(req: CallRequest):
 # ── Calls ─────────────────────────────────────────────────────────────────────
 
 @app.get("/api/calls")
-async def api_get_calls(page: int = 1, limit: int = 20):
+async def api_get_calls(page: int = 1, limit: int = 20, current_user: dict = Depends(get_current_user)):
     return await get_all_calls(page=page, limit=limit)
 
 
 @app.patch("/api/calls/{call_id}/notes")
-async def api_update_notes(call_id: str, req: NotesRequest):
+async def api_update_notes(call_id: str, req: NotesRequest, current_user: dict = Depends(get_current_user)):
     ok = await update_call_notes(call_id, req.notes)
     if not ok:
         raise HTTPException(404, "Call not found")
@@ -215,19 +297,19 @@ async def api_update_notes(call_id: str, req: NotesRequest):
 # ── Stats ─────────────────────────────────────────────────────────────────────
 
 @app.get("/api/stats")
-async def api_get_stats():
+async def api_get_stats(current_user: dict = Depends(get_current_user)):
     return await get_stats()
 
 
 # ── Appointments ──────────────────────────────────────────────────────────────
 
 @app.get("/api/appointments")
-async def api_get_appointments(date: Optional[str] = None):
+async def api_get_appointments(date: Optional[str] = None, current_user: dict = Depends(get_current_user)):
     return await get_all_appointments(date_filter=date)
 
 
 @app.delete("/api/appointments/{appointment_id}")
-async def api_cancel_appointment(appointment_id: str):
+async def api_cancel_appointment(appointment_id: str, current_user: dict = Depends(get_current_user)):
     ok = await cancel_appointment(appointment_id)
     if not ok:
         raise HTTPException(404, "Appointment not found or already cancelled")
@@ -237,19 +319,19 @@ async def api_cancel_appointment(appointment_id: str):
 # ── Prompt ────────────────────────────────────────────────────────────────────
 
 @app.get("/api/prompt")
-async def api_get_prompt():
+async def api_get_prompt(current_user: dict = Depends(get_current_user)):
     saved = await get_setting("system_prompt", "")
     return {"prompt": saved or DEFAULT_SYSTEM_PROMPT, "is_custom": bool(saved)}
 
 
 @app.post("/api/prompt")
-async def api_save_prompt(req: PromptRequest):
+async def api_save_prompt(req: PromptRequest, current_user: dict = Depends(get_current_user)):
     await set_setting("system_prompt", req.prompt)
     return {"status": "saved"}
 
 
 @app.delete("/api/prompt")
-async def api_reset_prompt():
+async def api_reset_prompt(current_user: dict = Depends(get_current_user)):
     await set_setting("system_prompt", "")
     return {"status": "reset", "prompt": DEFAULT_SYSTEM_PROMPT}
 
@@ -257,12 +339,12 @@ async def api_reset_prompt():
 # ── Settings ──────────────────────────────────────────────────────────────────
 
 @app.get("/api/settings")
-async def api_get_settings():
+async def api_get_settings(current_user: dict = Depends(get_current_user)):
     return await get_all_settings()
 
 
 @app.post("/api/settings")
-async def api_save_settings(req: SettingsRequest):
+async def api_save_settings(req: SettingsRequest, current_user: dict = Depends(get_current_user)):
     filtered = {k: v for k, v in req.settings.items() if v is not None and v != ""}
     await save_settings(filtered)
     for k, v in filtered.items():
@@ -273,7 +355,7 @@ async def api_save_settings(req: SettingsRequest):
 # ── SIP trunk setup ───────────────────────────────────────────────────────────
 
 @app.post("/api/setup/trunk")
-async def api_setup_trunk():
+async def api_setup_trunk(current_user: dict = Depends(get_current_user)):
     url    = await eff("LIVEKIT_URL")
     key    = await eff("LIVEKIT_API_KEY")
     secret = await eff("LIVEKIT_API_SECRET")
@@ -316,12 +398,12 @@ async def api_setup_trunk():
 # ── Logs ──────────────────────────────────────────────────────────────────────
 
 @app.get("/api/logs")
-async def api_get_logs(limit: int = 200, level: Optional[str] = None, source: Optional[str] = None):
+async def api_get_logs(limit: int = 200, level: Optional[str] = None, source: Optional[str] = None, current_user: dict = Depends(get_current_user)):
     return await get_logs(level=level, source=source, limit=limit)
 
 
 @app.delete("/api/logs")
-async def api_clear_logs():
+async def api_clear_logs(current_user: dict = Depends(get_current_user)):
     await clear_errors()
     return {"status": "cleared"}
 
@@ -329,19 +411,19 @@ async def api_clear_logs():
 # ── CRM ───────────────────────────────────────────────────────────────────────
 
 @app.get("/api/crm")
-async def api_get_contacts():
+async def api_get_contacts(current_user: dict = Depends(get_current_user)):
     return {"data": await get_contacts()}
 
 
 @app.get("/api/crm/calls")
-async def api_get_contact_calls(phone: str = Query(...)):
+async def api_get_contact_calls(phone: str = Query(...), current_user: dict = Depends(get_current_user)):
     return {"data": await get_calls_by_phone(phone)}
 
 
 # ── Agent Profiles ────────────────────────────────────────────────────────────
 
 @app.get("/api/agent-profiles")
-async def api_list_agent_profiles():
+async def api_list_agent_profiles(current_user: dict = Depends(get_current_user)):
     try:
         return await get_all_agent_profiles()
     except Exception as exc:
@@ -349,7 +431,7 @@ async def api_list_agent_profiles():
 
 
 @app.post("/api/agent-profiles")
-async def api_create_agent_profile(req: AgentProfileRequest):
+async def api_create_agent_profile(req: AgentProfileRequest, current_user: dict = Depends(get_current_user)):
     try:
         profile_id = await create_agent_profile(
             name=req.name, voice=req.voice, model=req.model,
@@ -361,7 +443,7 @@ async def api_create_agent_profile(req: AgentProfileRequest):
 
 
 @app.get("/api/agent-profiles/{profile_id}")
-async def api_get_agent_profile(profile_id: str):
+async def api_get_agent_profile(profile_id: str, current_user: dict = Depends(get_current_user)):
     profile = await get_agent_profile(profile_id)
     if not profile:
         raise HTTPException(404, "Profile not found")
@@ -369,7 +451,7 @@ async def api_get_agent_profile(profile_id: str):
 
 
 @app.put("/api/agent-profiles/{profile_id}")
-async def api_update_agent_profile(profile_id: str, req: AgentProfileRequest):
+async def api_update_agent_profile(profile_id: str, req: AgentProfileRequest, current_user: dict = Depends(get_current_user)):
     ok = await update_agent_profile(profile_id, {
         "name": req.name, "voice": req.voice, "model": req.model,
         "system_prompt": req.system_prompt, "enabled_tools": req.enabled_tools,
@@ -381,7 +463,7 @@ async def api_update_agent_profile(profile_id: str, req: AgentProfileRequest):
 
 
 @app.delete("/api/agent-profiles/{profile_id}")
-async def api_delete_agent_profile(profile_id: str):
+async def api_delete_agent_profile(profile_id: str, current_user: dict = Depends(get_current_user)):
     ok = await delete_agent_profile(profile_id)
     if not ok:
         raise HTTPException(404, "Profile not found")
@@ -389,7 +471,7 @@ async def api_delete_agent_profile(profile_id: str):
 
 
 @app.post("/api/agent-profiles/{profile_id}/set-default")
-async def api_set_default_profile(profile_id: str):
+async def api_set_default_profile(profile_id: str, current_user: dict = Depends(get_current_user)):
     try:
         await set_default_agent_profile(profile_id)
         return {"status": "default set"}
@@ -509,7 +591,7 @@ def _schedule_campaign(campaign_id: str, schedule_type: str, schedule_time: str)
 
 
 @app.post("/api/campaigns")
-async def api_create_campaign(req: CampaignRequest):
+async def api_create_campaign(req: CampaignRequest, current_user: dict = Depends(get_current_user)):
     if not req.contacts:
         raise HTTPException(400, "contacts list cannot be empty")
     if req.schedule_type not in ("once", "daily", "weekdays"):
@@ -532,12 +614,12 @@ async def api_create_campaign(req: CampaignRequest):
 
 
 @app.get("/api/campaigns")
-async def api_list_campaigns():
+async def api_list_campaigns(current_user: dict = Depends(get_current_user)):
     return await get_all_campaigns()
 
 
 @app.delete("/api/campaigns/{campaign_id}")
-async def api_delete_campaign(campaign_id: str):
+async def api_delete_campaign(campaign_id: str, current_user: dict = Depends(get_current_user)):
     ok = await delete_campaign(campaign_id)
     if not ok:
         raise HTTPException(404, "Campaign not found")
@@ -548,7 +630,7 @@ async def api_delete_campaign(campaign_id: str):
 
 
 @app.post("/api/campaigns/{campaign_id}/run")
-async def api_run_campaign_now(campaign_id: str):
+async def api_run_campaign_now(campaign_id: str, current_user: dict = Depends(get_current_user)):
     campaign = await get_campaign(campaign_id)
     if not campaign:
         raise HTTPException(404, "Campaign not found")
@@ -557,7 +639,7 @@ async def api_run_campaign_now(campaign_id: str):
 
 
 @app.patch("/api/campaigns/{campaign_id}/status")
-async def api_update_campaign_status(campaign_id: str, req: StatusRequest):
+async def api_update_campaign_status(campaign_id: str, req: StatusRequest, current_user: dict = Depends(get_current_user)):
     if req.status not in ("active", "paused", "completed"):
         raise HTTPException(400, "status must be: active | paused | completed")
     ok = await update_campaign_status(campaign_id, req.status)

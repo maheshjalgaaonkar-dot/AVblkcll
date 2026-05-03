@@ -1,0 +1,249 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>OutboundAI — Login</title>
+<style>
+*,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
+:root{
+  --bg:#0d0d0d; --card:#161616; --border:#252525;
+  --accent:#00ff88; --accent2:#00ccff; --danger:#ff4d4d;
+  --muted:#5a5a5a; --text:#e0e0e0; --text2:#aaa;
+  --r:12px;
+}
+body{
+  background:var(--bg);
+  color:var(--text);
+  font-family:'Segoe UI',system-ui,sans-serif;
+  min-height:100vh;
+  display:flex;
+  align-items:center;
+  justify-content:center;
+  line-height:1.5;
+}
+.login-container{
+  width:100%;
+  max-width:400px;
+  padding:20px;
+}
+.login-card{
+  background:var(--card);
+  border:1px solid var(--border);
+  border-radius:var(--r);
+  padding:40px;
+  text-align:center;
+}
+.logo{
+  font-size:48px;
+  margin-bottom:20px;
+}
+h1{
+  font-size:24px;
+  color:var(--accent);
+  margin-bottom:10px;
+}
+.subtitle{
+  color:var(--text2);
+  font-size:14px;
+  margin-bottom:30px;
+}
+.form-group{
+  margin-bottom:20px;
+  text-align:left;
+}
+label{
+  display:block;
+  color:var(--text);
+  margin-bottom:8px;
+  font-size:13px;
+  font-weight:500;
+}
+input{
+  width:100%;
+  padding:12px 16px;
+  background:var(--bg);
+  color:var(--text);
+  border:1px solid var(--border);
+  border-radius:var(--r);
+  font-size:14px;
+  transition:border-color 0.2s;
+}
+input:focus{
+  outline:none;
+  border-color:var(--accent);
+}
+input::placeholder{
+  color:var(--muted);
+}
+button{
+  width:100%;
+  padding:12px;
+  background:var(--accent);
+  color:var(--bg);
+  border:none;
+  border-radius:var(--r);
+  cursor:pointer;
+  font-weight:bold;
+  font-size:14px;
+  transition:all 0.2s;
+}
+button:hover{
+  background:#00cc66;
+}
+button:disabled{
+  background:var(--muted);
+  cursor:not-allowed;
+}
+.error{
+  color:var(--danger);
+  font-size:13px;
+  margin-top:15px;
+  display:none;
+}
+.loading{
+  display:none;
+  margin-top:15px;
+  color:var(--text2);
+  font-size:13px;
+}
+.forgot-password{
+  margin-top:20px;
+  font-size:13px;
+}
+.forgot-password a{
+  color:var(--accent2);
+  text-decoration:none;
+}
+.forgot-password a:hover{
+  text-decoration:underline;
+}
+@keyframes spin{
+  to{transform:rotate(360deg)}
+}
+.spinner{
+  display:inline-block;
+  width:16px;
+  height:16px;
+  border:2px solid var(--muted);
+  border-top-color:var(--accent);
+  border-radius:50%;
+  animation:spin 0.8s linear infinite;
+  margin-right:8px;
+}
+</style>
+</head>
+<body>
+<div class="login-container">
+  <div class="login-card">
+    <div class="logo">🤖</div>
+    <h1>OutboundAI</h1>
+    <p class="subtitle">Sign in to access your dashboard</p>
+    
+    <form id="login-form">
+      <div class="form-group">
+        <label for="username">Username</label>
+        <input 
+          type="text" 
+          id="username" 
+          name="username" 
+          placeholder="Enter your username" 
+          required
+          autocomplete="username"
+        >
+      </div>
+      
+      <div class="form-group">
+        <label for="password">Password</label>
+        <input 
+          type="password" 
+          id="password" 
+          name="password" 
+          placeholder="Enter your password" 
+          required
+          autocomplete="current-password"
+        >
+      </div>
+      
+      <button type="submit" id="login-btn">
+        <span id="btn-text">Sign In</span>
+        <span id="btn-loading" class="loading"><span class="spinner"></span>Signing in...</span>
+      </button>
+      
+      <div class="error" id="error-message"></div>
+    </form>
+    
+    <div class="forgot-password">
+      <a href="#">Forgot password?</a>
+    </div>
+  </div>
+</div>
+
+<script>
+const loginForm = document.getElementById('login-form');
+const loginBtn = document.getElementById('login-btn');
+const btnText = document.getElementById('btn-text');
+const btnLoading = document.getElementById('btn-loading');
+const errorMessage = document.getElementById('error-message');
+
+loginForm.addEventListener('submit', async (e) => {
+  e.preventDefault();
+  
+  const username = document.getElementById('username').value;
+  const password = document.getElementById('password').value;
+  
+  // Show loading state
+  loginBtn.disabled = true;
+  btnText.style.display = 'none';
+  btnLoading.style.display = 'inline';
+  errorMessage.style.display = 'none';
+  
+  try {
+    const response = await fetch('/api/auth/login', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json'
+      },
+      body: JSON.stringify({ username, password })
+    });
+    
+    const data = await response.json();
+    
+    if (response.ok) {
+      // Store token in localStorage
+      localStorage.setItem('auth_token', data.token);
+      localStorage.setItem('user', JSON.stringify(data.user));
+      
+      // Redirect to dashboard
+      window.location.href = '/ui/';
+    } else {
+      // Show error
+      errorMessage.textContent = data.message || 'Invalid credentials';
+      errorMessage.style.display = 'block';
+      
+      // Reset button state
+      loginBtn.disabled = false;
+      btnText.style.display = 'inline';
+      btnLoading.style.display = 'none';
+    }
+  } catch (error) {
+    errorMessage.textContent = 'Connection error. Please try again.';
+    errorMessage.style.display = 'block';
+    
+    // Reset button state
+    loginBtn.disabled = false;
+    btnText.style.display = 'inline';
+    btnLoading.style.display = 'none';
+  }
+});
+
+// Check if already logged in
+window.addEventListener('load', () => {
+  const token = localStorage.getItem('auth_token');
+  if (token) {
+    window.location.href = '/ui/';
+  }
+});
+</script>
+</body>
+</html>

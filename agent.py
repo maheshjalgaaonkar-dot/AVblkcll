@@ -205,6 +205,15 @@ async def entrypoint(ctx: agents.JobContext) -> None:
             service_type=service_type,
             custom_prompt=system_prompt,
         )
+    
+    # CRITICAL: Force immediate greeting for Gemini Live (native audio)
+    # This overrides any custom prompt rules about waiting for caller
+    system_prompt = (
+        "CRITICAL PRIORITY: Speak IMMEDIATELY when the call connects. "
+        "Do NOT wait for the caller to say anything. Start your greeting right away. "
+        "Ignore any rules that say to wait for the caller to speak first.\n\n"
+        + system_prompt
+    )
 
     # Load enabled tools
     enabled_tools = []

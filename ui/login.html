@@ -4,49 +4,64 @@
 <meta charset="UTF-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1.0" />
 <title>Aiona Voice — Login</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
 <style>
 *,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
 :root{
-  --bg:#0d0d0d; --card:#161616; --border:#252525;
-  --accent:#00ff88; --accent2:#00ccff; --danger:#ff4d4d;
-  --muted:#5a5a5a; --text:#e0e0e0; --text2:#aaa;
-  --r:12px;
+  --bg:#0a0a0a; --card:#141414; --border:#2a2a2a;
+  --accent:#00d4ff; --accent-hover:#00b8e6; --accent-light:#00d4ff20;
+  --danger:#ff4757; --muted:#718093; --text:#e2e8f0; --text2:#a0aec0;
+  --sans:'Inter',system-ui,-apple-system,sans-serif;
+  --r:12px; --shadow:0 1px 3px rgba(0,0,0,0.3); --shadow-lg:0 10px 40px rgba(0,0,0,0.4);
 }
 body{
   background:var(--bg);
   color:var(--text);
-  font-family:'Segoe UI',system-ui,sans-serif;
+  font-family:var(--sans);
   min-height:100vh;
   display:flex;
   align-items:center;
   justify-content:center;
-  line-height:1.5;
+  line-height:1.6;
+  padding:20px;
 }
 .login-container{
   width:100%;
-  max-width:400px;
-  padding:20px;
+  max-width:420px;
 }
 .login-card{
   background:var(--card);
   border:1px solid var(--border);
-  border-radius:var(--r);
-  padding:40px;
+  border-radius:20px;
+  padding:48px;
   text-align:center;
+  box-shadow:var(--shadow-lg);
 }
 .logo{
-  font-size:48px;
-  margin-bottom:20px;
+  width:64px;
+  height:64px;
+  background:var(--accent-light);
+  border-radius:16px;
+  display:flex;
+  align-items:center;
+  justify-content:center;
+  margin:0 auto 24px;
+  font-size:32px;
 }
 h1{
-  font-size:24px;
-  color:var(--accent);
-  margin-bottom:10px;
+  font-size:28px;
+  font-weight:700;
+  color:var(--text);
+  margin-bottom:8px;
+  letter-spacing:-0.5px;
 }
 .subtitle{
   color:var(--text2);
   font-size:14px;
-  margin-bottom:30px;
+  margin-bottom:32px;
+  font-weight:500;
 }
 .form-group{
   margin-bottom:20px;
@@ -57,63 +72,75 @@ label{
   color:var(--text);
   margin-bottom:8px;
   font-size:13px;
-  font-weight:500;
+  font-weight:600;
+  letter-spacing:-0.1px;
 }
 input{
   width:100%;
-  padding:12px 16px;
+  padding:14px 16px;
   background:var(--bg);
   color:var(--text);
   border:1px solid var(--border);
-  border-radius:var(--r);
+  border-radius:10px;
   font-size:14px;
-  transition:border-color 0.2s;
+  font-family:var(--sans);
+  transition:all 0.2s;
 }
 input:focus{
   outline:none;
   border-color:var(--accent);
+  box-shadow:0 0 0 3px var(--accent-light);
 }
 input::placeholder{
   color:var(--muted);
 }
 button{
   width:100%;
-  padding:12px;
+  padding:14px 24px;
   background:var(--accent);
-  color:var(--bg);
+  color:#0a0a0a;
   border:none;
-  border-radius:var(--r);
+  border-radius:10px;
   cursor:pointer;
-  font-weight:bold;
+  font-weight:600;
   font-size:14px;
   transition:all 0.2s;
+  letter-spacing:-0.2px;
 }
 button:hover{
-  background:#00cc66;
+  background:var(--accent-hover);
+  transform:translateY(-1px);
+}
+button:active{
+  transform:translateY(0);
 }
 button:disabled{
   background:var(--muted);
   cursor:not-allowed;
+  opacity:0.5;
+  transform:none;
 }
 .error{
   color:var(--danger);
   font-size:13px;
-  margin-top:15px;
+  margin-top:16px;
   display:none;
+  font-weight:500;
 }
 .loading{
   display:none;
-  margin-top:15px;
+  margin-top:16px;
   color:var(--text2);
   font-size:13px;
 }
 .forgot-password{
-  margin-top:20px;
+  margin-top:24px;
   font-size:13px;
 }
 .forgot-password a{
-  color:var(--accent2);
+  color:var(--accent);
   text-decoration:none;
+  font-weight:500;
 }
 .forgot-password a:hover{
   text-decoration:underline;

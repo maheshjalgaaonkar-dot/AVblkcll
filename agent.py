@@ -364,9 +364,5 @@ if __name__ == "__main__":
     init_db()
     load_db_settings_to_env()
     agents.cli.run_app(
-        agents.WorkerOptions(
-            entrypoint_fnc=entrypoint, 
-            agent_name="outbound-caller",
-            num_workers=1  # Prevent duplicate agent initialization
-        )
+        agents.WorkerOptions(entrypoint_fnc=entrypoint, agent_name="outbound-caller")
     )

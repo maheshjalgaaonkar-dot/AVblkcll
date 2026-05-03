@@ -287,7 +287,19 @@ async def entrypoint(ctx: agents.JobContext) -> None:
         ctx.shutdown()
         return
 
-    # ── Optional S3 recording ────────────────────────────────────────────────
+    # ── Greeting ─────────────────────────────────────────────────────────────
+    # Force immediate greeting for all models to ensure AI speaks right away
+    greeting = (
+        f"The call just connected. Greet the lead and ask if you're speaking with {lead_name}."
+        if phone_number else "Greet the caller warmly."
+    )
+    try:
+        await session.generate_reply(instructions=greeting)
+        await _log("info", "Greeting triggered successfully")
+    except Exception as _gr_exc:
+        await _log("warning", f"generate_reply failed: {_gr_exc}")
+
+    # ── Optional S3 recording (start AFTER greeting) ────────────────────────────────
     if phone_number:
         _aws_key    = os.getenv("S3_ACCESS_KEY_ID") or os.getenv("AWS_ACCESS_KEY_ID", "")
         _aws_secret = os.getenv("S3_SECRET_ACCESS_KEY") or os.getenv("AWS_SECRET_ACCESS_KEY", "")
@@ -312,18 +324,6 @@ async def entrypoint(ctx: agents.JobContext) -> None:
                 await _log("info", f"Recording started: egress={_egress.egress_id}")
             except Exception as _exc:
                 await _log("warning", f"Recording start failed (non-fatal): {_exc}")
-
-    # ── Greeting ─────────────────────────────────────────────────────────────
-    # Force immediate greeting for all models to ensure AI speaks right away
-    greeting = (
-        f"The call just connected. Greet the lead and ask if you're speaking with {lead_name}."
-        if phone_number else "Greet the caller warmly."
-    )
-    try:
-        await session.generate_reply(instructions=greeting)
-        await _log("info", "Greeting triggered successfully")
-    except Exception as _gr_exc:
-        await _log("warning", f"generate_reply failed: {_gr_exc}")
 
     # ── Keep session alive until SIP participant actually leaves ─────────────
     # Without this block, the entrypoint returns and the process spins down.
@@ -361,5 +361,9 @@ if __name__ == "__main__":
     init_db()
     load_db_settings_to_env()
     agents.cli.run_app(
-        agents.WorkerOptions(entrypoint_fnc=entrypoint, agent_name="outbound-caller")
+        agents.WorkerOptions(
+            entrypoint_fnc=entrypoint, 
+            agent_name="outbound-caller",
+            num_workers=1  # Prevent duplicate agent initialization
+        )
     )

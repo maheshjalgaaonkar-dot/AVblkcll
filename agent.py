@@ -160,10 +160,27 @@ def _build_session(tools: list, system_prompt: str) -> AgentSession:
     # Pipeline fallback (STT → LLM → TTS)
     if _google_llm and _deepgram_stt and _google_tts:
         logger.info("Using pipeline fallback (Deepgram STT + Gemini LLM + Google TTS)")
+        
+        # Instantiate Google LLM with model and API key
+        api_key = os.getenv("GOOGLE_API_KEY", "")
+        if not api_key:
+            raise ValueError("GOOGLE_API_KEY not set")
+        
+        google_llm_instance = _google_llm(
+            model=model_name,
+            api_key=api_key,
+        )
+        
+        # Instantiate Google TTS with voice
+        google_tts_instance = _google_tts(
+            voice=voice_name,
+            api_key=api_key,
+        )
+        
         return AgentSession(
             stt=_deepgram_stt,
-            llm=_google_llm,
-            tts=_google_tts,
+            llm=google_llm_instance,
+            tts=google_tts_instance,
             tools=tools,
         )
 

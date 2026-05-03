@@ -252,6 +252,9 @@ async def entrypoint(ctx: agents.JobContext) -> None:
 
     await _log("info", f"Connected to LiveKit room: {ctx.room.name}")
 
+    # ── CRITICAL: Connect to room before starting session ──
+    await ctx.connect()
+
     # ── Build AI session BEFORE dialing (to save time) ──
     gemini_model = os.getenv("GEMINI_MODEL", "gemini-3.1-flash-live-preview")
     await _log("info", f"Building AI session — model={gemini_model}")

@@ -295,11 +295,10 @@ async def entrypoint(ctx: agents.JobContext) -> None:
         
         # ── Trigger immediate greeting for Gemini Live ─────────────────────
         # Gemini Live is reactive - waits for audio input before speaking
-        # The system prompt instructions are not sufficient to trigger speech
-        # This is a fundamental limitation of Gemini Live native audio
-        await _log("warning", "Gemini Live requires audio input to start speaking")
-        await _log("info", "System prompt instructions may not trigger immediate speech")
-        await _log("info", "AI will respond when it detects caller audio input")
+        # No direct API exists to trigger proactive speech in Gemini Live
+        # System prompt instructions are the only mechanism, but may not work
+        await _log("info", "Gemini Live will speak based on system prompt instructions")
+        await _log("info", "If greeting doesn't start immediately, this is a Gemini Live limitation")
     except Exception as exc:
         await _log("error", f"Session start FAILED: {exc}")
         ctx.shutdown()

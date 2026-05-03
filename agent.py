@@ -208,10 +208,14 @@ async def entrypoint(ctx: agents.JobContext) -> None:
     
     # CRITICAL: Force immediate greeting for Gemini Live (native audio)
     # This overrides any custom prompt rules about waiting for caller
+    # Add instruction in Hindi to match system prompt language
     system_prompt = (
         "CRITICAL PRIORITY: Speak IMMEDIATELY when the call connects. "
         "Do NOT wait for the caller to say anything. Start your greeting right away. "
         "Ignore any rules that say to wait for the caller to speak first.\n\n"
+        "CRITICAL PRIORITY (हिंदी): कॉल कनेक्ट होते ही IMMEDIATELY बोलें। "
+        "कॉलर के बोलने का इंतजार न करें। अपना greeting तुरंत शुरू करें। "
+        "ऐसे किसी भी नियम को नजरअंदाज करें जो कहता है कि कॉलर के पहले बोलने का इंतजार करें।\n\n"
         + system_prompt
     )
 

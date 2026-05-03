@@ -215,7 +215,7 @@ loginForm.addEventListener('submit', async (e) => {
       localStorage.setItem('user', JSON.stringify(data.user));
       
       // Redirect to dashboard
-      window.location.href = '/ui/';
+      window.location.href = '/';
     } else {
       // Show error
       errorMessage.textContent = data.message || 'Invalid credentials';
@@ -241,7 +241,7 @@ loginForm.addEventListener('submit', async (e) => {
 window.addEventListener('load', () => {
   const token = localStorage.getItem('auth_token');
   if (token) {
-    window.location.href = '/ui/';
+    window.location.href = '/';
   }
 });
 </script>

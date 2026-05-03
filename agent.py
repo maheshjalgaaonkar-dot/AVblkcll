@@ -135,7 +135,7 @@ def _build_session(tools: list, system_prompt: str) -> AgentSession:
                 realtime_input_config=_gt.RealtimeInputConfig(
                     automatic_activity_detection=_gt.AutomaticActivityDetection(
                         end_of_speech_sensitivity=_gt.EndSensitivity.END_SENSITIVITY_LOW,
-                        silence_duration_ms=800,
+                        silence_duration_ms=200,  # Reduced from 800ms to 200ms for faster response
                     ),
                 ),
             )
@@ -292,14 +292,59 @@ async def entrypoint(ctx: agents.JobContext) -> None:
     try:
         await session.start(**_session_kwargs)
         await _log("info", "Agent session started — AI ready, generating greeting")
+        
+        # ── Trigger immediate greeting for Gemini Live ─────────────────────
+        # Try multiple methods to trigger immediate speech
+        greeting_triggered = False
+        
+        # Method 1: Try generate_reply (works with some LiveKit versions)
+        try:
+            await session.generate_reply()
+            await _log("info", "Initial greeting triggered via generate_reply")
+            greeting_triggered = True
+        except AttributeError:
+            await _log("warning", "generate_reply not available")
+        except Exception as exc:
+            await _log("warning", f"generate_reply failed: {exc}")
+        
+        # Method 2: Try session.say
+        if not greeting_triggered:
+            try:
+                await session.say("Hello, this is an automated call.")
+                await _log("info", "Initial greeting triggered via session.say")
+                greeting_triggered = True
+            except AttributeError:
+                await _log("warning", "session.say not available")
+            except Exception as exc:
+                await _log("warning", f"session.say failed: {exc}")
+        
+        # Method 3: Try to send message through the LLM
+        if not greeting_triggered and hasattr(session, 'llm'):
+            try:
+                # Try to send a message to trigger the model
+                if hasattr(session.llm, 'send_message'):
+                    await session.llm.send_message(
+                        role="user",
+                        content="START_CONVERSATION"
+                    )
+                    await _log("info", "Initial greeting triggered via llm.send_message")
+                    greeting_triggered = True
+                elif hasattr(session.llm, 'generate_content'):
+                    await session.llm.generate_content("START_CONVERSATION")
+                    await _log("info", "Initial greeting triggered via llm.generate_content")
+                    greeting_triggered = True
+            except Exception as exc:
+                await _log("warning", f"LLM message trigger failed: {exc}")
+        
+        if not greeting_triggered:
+            await _log("warning", "All greeting trigger methods failed, relying on system prompt")
     except Exception as exc:
-        await _log("error", f"Session start failed: {exc}")
+        await _log("error", f"Session start FAILED: {exc}")
         ctx.shutdown()
         return
 
     # ── Greeting ─────────────────────────────────────────────────────────────
     # For Gemini Live, the AI speaks automatically based on system prompt
-    # The conflicting "Hello" rule has been removed from the prompt
     # No manual trigger needed - AI will start immediately on session start
 
     # ── Optional S3 recording (start AFTER greeting) ────────────────────────────────

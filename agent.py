@@ -288,9 +288,19 @@ async def entrypoint(ctx: agents.JobContext) -> None:
         return
 
     # ── Greeting ─────────────────────────────────────────────────────────────
-    # Gemini Live native audio speaks autonomously from system prompt
-    # generate_reply is NOT compatible with Gemini Live - removed
-    await _log("info", "Gemini Live will greet autonomously from system prompt")
+    # Force immediate greeting for all models to ensure AI speaks right away
+    # Guard to prevent duplicate greetings
+    if not getattr(session, "_greeting_sent", False):
+        greeting = (
+            f"The call just connected. Greet the lead and ask if you're speaking with {lead_name}."
+            if phone_number else "Greet the caller warmly."
+        )
+        try:
+            await session.generate_reply(instructions=greeting)
+            session._greeting_sent = True
+            await _log("info", "Initial greeting triggered immediately")
+        except Exception as _gr_exc:
+            await _log("warning", f"generate_reply failed: {_gr_exc}")
 
     # ── Optional S3 recording (start AFTER greeting) ────────────────────────────────
     if phone_number:

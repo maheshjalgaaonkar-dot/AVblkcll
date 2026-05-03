@@ -246,11 +246,17 @@ async def entrypoint(ctx: agents.JobContext) -> None:
     await ctx.connect()
     await _log("info", "Room connection established")
 
+    # ── Add greeting instruction to system prompt (simpler format) ─────────────
+    # This tells the AI to speak the greeting immediately when it receives audio input
+    greeting_instruction = "\n\nWhen the call starts and you receive the first audio input (like 'Hello'), immediately speak the greeting that starts with 'नमस्ते'. Do not wait."
+    modified_system_prompt = system_prompt + greeting_instruction
+    await _log("info", "Greeting instruction added to system prompt")
+
     # ── Build AI session BEFORE dialing (to save time) ──
     gemini_model = os.getenv("GEMINI_MODEL", "gemini-3.1-flash-live-preview")
     await _log("info", f"Building AI session — model={gemini_model}")
     await _log("info", f"Tools loaded: {[t.__name__ for t in active_tools]}")
-    session = _build_session(tools=active_tools, system_prompt=system_prompt)
+    session = _build_session(tools=active_tools, system_prompt=modified_system_prompt)
 
     # ── Dial — session will start after call is answered ─────────────────────
     if phone_number:

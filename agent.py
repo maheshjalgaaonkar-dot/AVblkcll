@@ -241,6 +241,10 @@ async def entrypoint(ctx: agents.JobContext) -> None:
     active_tools = tool_ctx.build_tool_list(enabled_tools)
 
     await _log("info", f"Connected to LiveKit room: {ctx.room.name}")
+    
+    # ── Connect to room (required for proper audio routing) ───────────────────
+    await ctx.connect()
+    await _log("info", "Room connection established")
 
     # ── Build AI session BEFORE dialing (to save time) ──
     gemini_model = os.getenv("GEMINI_MODEL", "gemini-3.1-flash-live-preview")
@@ -328,21 +332,10 @@ async def entrypoint(ctx: agents.JobContext) -> None:
         ctx.shutdown()
         return
 
-    # ── Send greeting immediately after session starts ─────────────────────────
-    # Gemini Live is reactive, so we need to send audio to trigger the greeting
-    # We'll send a brief silence/audio to wake up the model
-    await _log("info", "Sending initial audio to trigger greeting")
-    
-    # Send a brief audio frame to trigger the model to speak the greeting
-    # This is necessary because Gemini Live waits for audio input before responding
-    try:
-        # Create a brief silence audio frame (10ms of silence)
-        import numpy as np
-        silence_frame = np.zeros(1600, dtype=np.int16)  # 10ms at 16kHz
-        await session.send_audio(silence_frame.tobytes())
-        await asyncio.sleep(0.1)  # Small delay to allow the model to process
-    except Exception as exc:
-        await _log("warning", f"Failed to send initial audio frame: {exc}")
+    # ── Greeting handling ──
+    # Note: Gemini Live is reactive and waits for audio input before speaking
+    # The system prompt contains the greeting at the top
+    # The model will speak the greeting when it receives audio input from the caller
 
     # ── Keep session alive until SIP participant actually leaves ─────────────
     # Without this block, the entrypoint returns and the process spins down.

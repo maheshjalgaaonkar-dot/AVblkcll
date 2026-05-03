@@ -289,15 +289,18 @@ async def entrypoint(ctx: agents.JobContext) -> None:
 
     # ── Greeting ─────────────────────────────────────────────────────────────
     # Force immediate greeting for all models to ensure AI speaks right away
-    greeting = (
-        f"The call just connected. Greet the lead and ask if you're speaking with {lead_name}."
-        if phone_number else "Greet the caller warmly."
-    )
-    try:
-        await session.generate_reply(instructions=greeting)
-        await _log("info", "Greeting triggered successfully")
-    except Exception as _gr_exc:
-        await _log("warning", f"generate_reply failed: {_gr_exc}")
+    # Guard to prevent duplicate greetings
+    if not getattr(session, "_greeting_sent", False):
+        greeting = (
+            f"The call just connected. Greet the lead and ask if you're speaking with {lead_name}."
+            if phone_number else "Greet the caller warmly."
+        )
+        try:
+            await session.generate_reply(instructions=greeting)
+            session._greeting_sent = True
+            await _log("info", "Initial greeting triggered immediately")
+        except Exception as _gr_exc:
+            await _log("warning", f"generate_reply failed: {_gr_exc}")
 
     # ── Optional S3 recording (start AFTER greeting) ────────────────────────────────
     if phone_number:

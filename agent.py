@@ -292,19 +292,19 @@ async def entrypoint(ctx: agents.JobContext) -> None:
         return
 
     # ── Greeting ─────────────────────────────────────────────────────────────
-    # Force immediate greeting for all models to ensure AI speaks right away
+    # Force immediate greeting using native audio message for Gemini Live
     # Guard to prevent duplicate greetings
     if not getattr(session, "_greeting_sent", False):
-        greeting = (
-            f"The call just connected. Greet the lead and ask if you're speaking with {lead_name}."
-            if phone_number else "Greet the caller warmly."
-        )
         try:
-            await session.generate_reply(instructions=greeting)
+            # Use send_message for Gemini Live native audio compatibility
+            await session.send_message(
+                role="assistant",
+                content="START_CONVERSATION"
+            )
             session._greeting_sent = True
-            await _log("info", "Initial greeting triggered immediately")
+            await _log("info", "Initial greeting triggered via send_message")
         except Exception as _gr_exc:
-            await _log("warning", f"generate_reply failed: {_gr_exc}")
+            await _log("warning", f"send_message failed: {_gr_exc}")
 
     # ── Optional S3 recording (start AFTER greeting) ────────────────────────────────
     if phone_number:

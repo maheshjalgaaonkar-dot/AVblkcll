@@ -282,6 +282,39 @@ async def entrypoint(ctx: agents.JobContext) -> None:
             return
         await _log("info", f"Call ANSWERED — {phone_number} picked up, starting AI session now")
 
+    # ── DISABLED: Recording was blocking greeting even with asyncio.create_task ──
+    # Recording takes 3.36s to start and somehow still blocks the greeting
+    # Commented out to test if removing recording fixes the 15s delay
+    # async def _start_recording_async():
+    #     if phone_number:
+    #         _aws_key    = os.getenv("S3_ACCESS_KEY_ID") or os.getenv("AWS_ACCESS_KEY_ID", "")
+    #         _aws_secret = os.getenv("S3_SECRET_ACCESS_KEY") or os.getenv("AWS_SECRET_ACCESS_KEY", "")
+    #         _aws_bucket = os.getenv("S3_BUCKET") or os.getenv("AWS_BUCKET_NAME", "")
+    #         _s3_endpoint = os.getenv("S3_ENDPOINT_URL") or os.getenv("S3_ENDPOINT", "")
+    #         _s3_region  = os.getenv("S3_REGION") or os.getenv("AWS_REGION", "ap-northeast-1")
+    #         if _aws_key and _aws_secret and _aws_bucket:
+    #             try:
+    #                 _recording_path = f"recordings/{ctx.room.name}.ogg"
+    #                 _egress_req = api.RoomCompositeEgressRequest(
+    #                     room_name=ctx.room.name, audio_only=True,
+    #                     file_outputs=[api.EncodedFileOutput(
+    #                         file_type=api.EncodedFileType.OGG, filepath=_recording_path,
+    #                         s3=api.S3Upload(access_key=_aws_key, secret=_aws_secret,
+    #                                         bucket=_aws_bucket, region=_s3_region, endpoint=_s3_endpoint),
+    #                     )],
+    #                 )
+    #                 _egress = await ctx.api.egress.start_room_composite_egress(_egress_req)
+    #                 _s3_ep = _s3_endpoint.rstrip("/")
+    #                 tool_ctx.recording_url = (f"{_s3_ep}/{_aws_bucket}/{_recording_path}"
+    #                                            if _s3_ep else f"s3://{_aws_bucket}/{_recording_path}")
+    #                 await _log("info", f"Recording started: egress={_egress.egress_id}")
+    #             except Exception as _exc:
+    #                 await _log("warning", f"Recording start failed (non-fatal): {_exc}")
+
+    # # Start recording in background BEFORE session
+    # asyncio.create_task(_start_recording_async())
+    # await _log("info", "Recording started in background (non-blocking)")
+
     # Use RoomOptions if available (non-deprecated), else fall back
     # NEVER use close_on_disconnect=True with SIP — drops on any audio blip
     if _HAS_ROOM_OPTIONS:
@@ -305,39 +338,9 @@ async def entrypoint(ctx: agents.JobContext) -> None:
         ctx.shutdown()
         return
 
-    # ── Step 1: Non-blocking recording (background task) ─────────────────────
-    # Start recording in background to avoid blocking greeting
-    async def _start_recording_async():
-        if phone_number:
-            _aws_key    = os.getenv("S3_ACCESS_KEY_ID") or os.getenv("AWS_ACCESS_KEY_ID", "")
-            _aws_secret = os.getenv("S3_SECRET_ACCESS_KEY") or os.getenv("AWS_SECRET_ACCESS_KEY", "")
-            _aws_bucket = os.getenv("S3_BUCKET") or os.getenv("AWS_BUCKET_NAME", "")
-            _s3_endpoint = os.getenv("S3_ENDPOINT_URL") or os.getenv("S3_ENDPOINT", "")
-            _s3_region  = os.getenv("S3_REGION") or os.getenv("AWS_REGION", "ap-northeast-1")
-            if _aws_key and _aws_secret and _aws_bucket:
-                try:
-                    _recording_path = f"recordings/{ctx.room.name}.ogg"
-                    _egress_req = api.RoomCompositeEgressRequest(
-                        room_name=ctx.room.name, audio_only=True,
-                        file_outputs=[api.EncodedFileOutput(
-                            file_type=api.EncodedFileType.OGG, filepath=_recording_path,
-                            s3=api.S3Upload(access_key=_aws_key, secret=_aws_secret,
-                                            bucket=_aws_bucket, region=_s3_region, endpoint=_s3_endpoint),
-                        )],
-                    )
-                    _egress = await ctx.api.egress.start_room_composite_egress(_egress_req)
-                    _s3_ep = _s3_endpoint.rstrip("/")
-                    tool_ctx.recording_url = (f"{_s3_ep}/{_aws_bucket}/{_recording_path}"
-                                               if _s3_ep else f"s3://{_aws_bucket}/{_recording_path}")
-                    await _log("info", f"Recording started: egress={_egress.egress_id}")
-                except Exception as _exc:
-                    await _log("warning", f"Recording start failed (non-fatal): {_exc}")
-
-    # Start recording in background
-    asyncio.create_task(_start_recording_async())
-
-    # ── Greeting is now handled via system prompt injection before session start ──
+    # ── Greeting is handled via system prompt injection before session start ──
     # The AI will speak immediately when session starts due to the CRITICAL instruction
+    # Note: Gemini Live is reactive and may still wait for audio input before speaking
 
     # ── Keep session alive until SIP participant actually leaves ─────────────
     # Without this block, the entrypoint returns and the process spins down.

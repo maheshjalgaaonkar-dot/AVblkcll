@@ -134,7 +134,7 @@ def _build_session(tools: list, system_prompt: str) -> AgentSession:
                 ),
                 realtime_input_config=_gt.RealtimeInputConfig(
                     automatic_activity_detection=_gt.AutomaticActivityDetection(
-                        end_of_speech_sensitivity=_gt.EndSensitivity.END_SENSITIVITY_MEDIUM,
+                        end_of_speech_sensitivity=_gt.EndSensitivity.END_SENSITIVITY_LOW,
                         silence_duration_ms=800,
                     ),
                 ),
@@ -225,36 +225,13 @@ async def entrypoint(ctx: agents.JobContext) -> None:
 
     await _log("info", f"Connected to LiveKit room: {ctx.room.name}")
 
-    # ── Build and start AI session BEFORE dialing (to eliminate first response delay) ──
+    # ── Build AI session BEFORE dialing (to save time) ──
     gemini_model = os.getenv("GEMINI_MODEL", "gemini-3.1-flash-live-preview")
     await _log("info", f"Building AI session — model={gemini_model}")
     await _log("info", f"Tools loaded: {[t.__name__ for t in active_tools]}")
     session = _build_session(tools=active_tools, system_prompt=system_prompt)
 
-    # Use RoomOptions if available (non-deprecated), else fall back
-    # NEVER use close_on_disconnect=True with SIP — drops on any audio blip
-    if _HAS_ROOM_OPTIONS:
-        from livekit.agents import RoomOptions as _RO
-        _session_kwargs = dict(
-            room=ctx.room,
-            agent=OutboundAssistant(instructions=system_prompt),
-            room_options=_RO(),
-        )
-    else:
-        _session_kwargs = dict(
-            room=ctx.room,
-            agent=OutboundAssistant(instructions=system_prompt),
-        )
-
-    try:
-        await session.start(**_session_kwargs)
-        await _log("info", "Agent session started — AI ready, waiting for call to connect")
-    except Exception as exc:
-        await _log("error", f"Session start failed: {exc}")
-        ctx.shutdown()
-        return
-
-    # ── Dial — session is already started and ready ─────────────────────
+    # ── Dial — session will start after call is answered ─────────────────────
     if phone_number:
         trunk_id = os.getenv("OUTBOUND_TRUNK_ID")
         if not trunk_id:
@@ -276,7 +253,30 @@ async def entrypoint(ctx: agents.JobContext) -> None:
             await _log("error", f"SIP dial FAILED for {phone_number}: {exc}")
             ctx.shutdown()
             return
-        await _log("info", f"Call ANSWERED — {phone_number} picked up, AI ready to speak")
+        await _log("info", f"Call ANSWERED — {phone_number} picked up, starting AI session now")
+
+    # Use RoomOptions if available (non-deprecated), else fall back
+    # NEVER use close_on_disconnect=True with SIP — drops on any audio blip
+    if _HAS_ROOM_OPTIONS:
+        from livekit.agents import RoomOptions as _RO
+        _session_kwargs = dict(
+            room=ctx.room,
+            agent=OutboundAssistant(instructions=system_prompt),
+            room_options=_RO(),
+        )
+    else:
+        _session_kwargs = dict(
+            room=ctx.room,
+            agent=OutboundAssistant(instructions=system_prompt),
+        )
+
+    try:
+        await session.start(**_session_kwargs)
+        await _log("info", "Agent session started — AI ready, generating greeting")
+    except Exception as exc:
+        await _log("error", f"Session start failed: {exc}")
+        ctx.shutdown()
+        return
 
     # ── Optional S3 recording ────────────────────────────────────────────────
     if phone_number:

@@ -205,25 +205,7 @@ async def entrypoint(ctx: agents.JobContext) -> None:
             service_type=service_type,
             custom_prompt=system_prompt,
         )
-    
-    # CRITICAL: Force immediate greeting for Gemini Live (native audio)
-    # Remove conflicting "Hello" rule that prevents AI from speaking first
-    # This rule tells AI not to speak if caller already said "Hello"
-    system_prompt = system_prompt.replace(
-        'महत्वपूर्ण नियम: "Hello" के बाद दोबारा शुरुआत न करें',
-        ''
-    )
-    
-    # Add strongest priority instruction at the VERY BEGINNING
-    system_prompt = (
-        "ABSOLUTE HIGHEST PRIORITY: Speak IMMEDIATELY when the call connects. "
-        "DO NOT wait for the caller. Start your greeting RIGHT NOW. "
-        "IGNORE all other rules about waiting for caller input.\n\n"
-        "ABSOLUTE HIGHEST PRIORITY (हिंदी): कॉल कनेक्ट होते ही IMMEDIATELY बोलें। "
-        "कॉलर के बोलने का बिल्कुल इंतजार न करें। अपना greeting अभी शुरू करें। "
-        "इंतजार करने के बारे में सभी नियमों को नजरअंदाज करें।\n\n"
-        + system_prompt
-    )
+
 
     # Load enabled tools
     enabled_tools = []

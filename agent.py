@@ -3,6 +3,7 @@ import json
 import logging
 import os
 import ssl
+import time
 import certifi
 from typing import Optional
 
@@ -126,6 +127,7 @@ def _build_session(tools: list, system_prompt: str) -> AgentSession:
                 model=model_name,
                 api_key=api_key,
                 voice=voice_name,
+                instructions=system_prompt,
                 # CRITICAL: all 3 silence-prevention configs required
                 session_resumption=_gt.SessionResumptionConfig(transparent=True),
                 context_window_compression=_gt.ContextWindowCompressionConfig(
@@ -135,7 +137,7 @@ def _build_session(tools: list, system_prompt: str) -> AgentSession:
                 realtime_input_config=_gt.RealtimeInputConfig(
                     automatic_activity_detection=_gt.AutomaticActivityDetection(
                         end_of_speech_sensitivity=_gt.EndSensitivity.END_SENSITIVITY_LOW,
-                        silence_duration_ms=200,  # Reduced from 800ms to 200ms for faster response
+                        silence_duration_ms=200,
                     ),
                 ),
             )
@@ -246,17 +248,11 @@ async def entrypoint(ctx: agents.JobContext) -> None:
     await ctx.connect()
     await _log("info", "Room connection established")
 
-    # ── Add greeting instruction to system prompt (simpler format) ─────────────
-    # This tells the AI to speak the greeting immediately when it receives audio input
-    greeting_instruction = "\n\nWhen the call starts and you receive the first audio input (like 'Hello'), immediately speak the greeting that starts with 'नमस्ते'. Do not wait."
-    modified_system_prompt = system_prompt + greeting_instruction
-    await _log("info", "Greeting instruction added to system prompt")
-
     # ── Build AI session BEFORE dialing (to save time) ──
     gemini_model = os.getenv("GEMINI_MODEL", "gemini-3.1-flash-live-preview")
     await _log("info", f"Building AI session — model={gemini_model}")
     await _log("info", f"Tools loaded: {[t.__name__ for t in active_tools]}")
-    session = _build_session(tools=active_tools, system_prompt=modified_system_prompt)
+    session = _build_session(tools=active_tools, system_prompt=system_prompt)
 
     # ── Dial — session will start after call is answered ─────────────────────
     if phone_number:
@@ -337,25 +333,6 @@ async def entrypoint(ctx: agents.JobContext) -> None:
         await _log("error", f"Session start FAILED: {exc}")
         ctx.shutdown()
         return
-
-    # ── Trigger initial greeting using session.generate_reply() ───────────────
-    # This is the CORRECT way to trigger an initial response with Gemini Live
-    # It creates an active generation turn so Gemini can stream its greeting
-    # Without this, "received server content but no active generation" warning appears
-    try:
-        await session.generate_reply(
-            instructions="Speak your greeting now in Hindi, starting with 'नमस्ते'. Follow the system prompt script exactly. Begin immediately.",
-        )
-        await _log("info", "Initial greeting triggered via generate_reply()")
-    except Exception as exc:
-        await _log("warning", f"generate_reply failed: {exc}")
-        # Fallback: try session.say() if generate_reply doesn't work
-        try:
-            if hasattr(session, 'say'):
-                await session.say("नमस्ते", allow_interruptions=True)
-                await _log("info", "Fallback: used session.say() for greeting")
-        except Exception as exc2:
-            await _log("warning", f"session.say fallback also failed: {exc2}")
 
     # ── Keep session alive until SIP participant actually leaves ─────────────
     # Without this block, the entrypoint returns and the process spins down.

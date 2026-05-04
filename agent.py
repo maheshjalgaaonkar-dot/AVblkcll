@@ -338,10 +338,24 @@ async def entrypoint(ctx: agents.JobContext) -> None:
         ctx.shutdown()
         return
 
-    # ── Greeting handling ──
-    # Note: Gemini Live is reactive and waits for audio input before speaking
-    # The system prompt contains the greeting at the top
-    # The model will speak the greeting when it receives audio input from the caller
+    # ── Trigger initial greeting using session.generate_reply() ───────────────
+    # This is the CORRECT way to trigger an initial response with Gemini Live
+    # It creates an active generation turn so Gemini can stream its greeting
+    # Without this, "received server content but no active generation" warning appears
+    try:
+        await session.generate_reply(
+            instructions="Speak your greeting now in Hindi, starting with 'नमस्ते'. Follow the system prompt script exactly. Begin immediately.",
+        )
+        await _log("info", "Initial greeting triggered via generate_reply()")
+    except Exception as exc:
+        await _log("warning", f"generate_reply failed: {exc}")
+        # Fallback: try session.say() if generate_reply doesn't work
+        try:
+            if hasattr(session, 'say'):
+                await session.say("नमस्ते", allow_interruptions=True)
+                await _log("info", "Fallback: used session.say() for greeting")
+        except Exception as exc2:
+            await _log("warning", f"session.say fallback also failed: {exc2}")
 
     # ── Keep session alive until SIP participant actually leaves ─────────────
     # Without this block, the entrypoint returns and the process spins down.

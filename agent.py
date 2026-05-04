@@ -142,8 +142,19 @@ def _build_session(tools: list, system_prompt: str) -> AgentSession:
                 ),
             )
             logger.info("Using Gemini Live (native audio) model: %s", model_name)
+
+            # Add Google TTS so session.say() can deliver the greeting instantly
+            tts_instance = None
+            if _google_tts:
+                try:
+                    tts_instance = _google_tts(voice_name=voice_name)
+                    logger.info("Google TTS created (voice=%s) for greeting delivery", voice_name)
+                except Exception as tts_exc:
+                    logger.warning("Could not create Google TTS (non-fatal): %s", tts_exc)
+
             return AgentSession(
                 llm=model,
+                tts=tts_instance,
                 tools=tools,
             )
         except Exception as exc:
@@ -206,6 +217,23 @@ async def entrypoint(ctx: agents.JobContext) -> None:
             custom_prompt=system_prompt,
         )
 
+    # ── Extract greeting & wrap prompt to prevent Gemini proactive speech ────
+    # Gemini Live interprets first-person text in instructions as dialogue to
+    # generate immediately.  The LiveKit plugin drops that unsolicited audio
+    # ("received server content but no active generation") AND the session
+    # becomes completely unresponsive afterwards.  Fix: deliver the greeting
+    # via TTS ourselves and tell Gemini the greeting was already spoken.
+    _greeting_text = system_prompt.split('\n\n')[0].strip()
+    system_prompt = (
+        "[LIVE CALL INSTRUCTION]\n"
+        "Your opening greeting has ALREADY been spoken to the caller by the "
+        "phone system. Do NOT repeat or re-generate the opening greeting line.\n"
+        "Wait SILENTLY until you hear the caller's voice in the audio stream.\n"
+        "When the caller responds (Hello, Speaking, Haan, etc.), continue the "
+        "conversation from AFTER the opening greeting using the script below.\n"
+        "CRITICAL: Generate ZERO audio before you hear the caller.\n\n"
+        + system_prompt
+    )
 
     # Load enabled tools
     enabled_tools = []
@@ -315,6 +343,17 @@ async def entrypoint(ctx: agents.JobContext) -> None:
         await _log("error", f"Session start FAILED: {exc}")
         ctx.shutdown()
         return
+
+    # ── Deliver greeting immediately via TTS ─────────────────────────────────
+    # Gemini Live's proactive speech is dropped by the plugin, so we speak the
+    # greeting ourselves through Google TTS.  This fires within ~1 s of the
+    # call being answered — no 14-second silence.
+    if _greeting_text:
+        try:
+            await session.say(_greeting_text, allow_interruptions=True)
+            await _log("info", "Greeting delivered via TTS")
+        except Exception as exc:
+            await _log("warning", f"TTS greeting failed (non-fatal): {exc}")
 
     # ── Keep session alive until SIP participant actually leaves ─────────────
     # Without this block, the entrypoint returns and the process spins down.

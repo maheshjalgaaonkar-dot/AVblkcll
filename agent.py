@@ -316,6 +316,39 @@ async def entrypoint(ctx: agents.JobContext) -> None:
         ctx.shutdown()
         return
 
+    # ── Trigger immediate greeting when SIP participant connects ───────────────
+    # Gemini Live is reactive and waits for audio input. We trigger it when
+    # the SIP participant (caller) connects by sending a brief audio frame.
+    async def _trigger_greeting_on_connect():
+        """Wait for SIP participant to connect, then trigger greeting."""
+        if not phone_number:
+            return
+        
+        _sip_identity = f"sip_{phone_number}"
+        await _log("info", f"Waiting for SIP participant {_sip_identity} to connect...")
+        
+        # Wait for SIP participant to join
+        while _sip_identity not in ctx.room.remote_participants:
+            await asyncio.sleep(0.1)
+        
+        await _log("info", f"SIP participant {_sip_identity} connected, triggering greeting")
+        
+        # Send a brief audio trigger to wake up Gemini Live
+        try:
+            import numpy as np
+            # Create minimal audio frame (10ms of silence at 16kHz)
+            silence_frame = np.zeros(160, dtype=np.int16).tobytes()
+            # Publish through the room's audio track
+            audio_source = rtc.AudioSource(16000, 1)
+            audio_track = rtc.LocalAudioTrack.create_audio_track("trigger", audio_source)
+            await ctx.room.local_participant.publish_audio_track(audio_track)
+            await _log("info", "Audio trigger sent to wake up Gemini Live")
+        except Exception as exc:
+            await _log("warning", f"Audio trigger failed (non-fatal): {exc}")
+    
+    # Start the greeting trigger in background
+    asyncio.create_task(_trigger_greeting_on_connect())
+
     # ── Keep session alive until SIP participant actually leaves ─────────────
     # Without this block, the entrypoint returns and the process spins down.
     # We watch participant_disconnected for the specific SIP identity.

@@ -318,7 +318,7 @@ async def entrypoint(ctx: agents.JobContext) -> None:
 
     # ── Trigger immediate greeting when SIP participant connects ───────────────
     # Gemini Live is reactive and waits for audio input. We trigger it when
-    # the SIP participant (caller) connects by sending a brief audio frame.
+    # the SIP participant (caller) connects by sending a brief text message.
     async def _trigger_greeting_on_connect():
         """Wait for SIP participant to connect, then trigger greeting."""
         if not phone_number:
@@ -333,18 +333,13 @@ async def entrypoint(ctx: agents.JobContext) -> None:
         
         await _log("info", f"SIP participant {_sip_identity} connected, triggering greeting")
         
-        # Send a brief audio trigger to wake up Gemini Live
+        # Send a brief text trigger to wake up Gemini Live
         try:
-            import numpy as np
-            # Create minimal audio frame (10ms of silence at 16kHz)
-            silence_frame = np.zeros(160, dtype=np.int16).tobytes()
-            # Publish through the room's audio track
-            audio_source = rtc.AudioSource(16000, 1)
-            audio_track = rtc.LocalAudioTrack.create_audio_track("trigger", audio_source)
-            await ctx.room.local_participant.publish_audio_track(audio_track)
-            await _log("info", "Audio trigger sent to wake up Gemini Live")
+            # Send a minimal text input to trigger the agent's response
+            await session.conversation.send_text(" ")
+            await _log("info", "Text trigger sent to wake up Gemini Live")
         except Exception as exc:
-            await _log("warning", f"Audio trigger failed (non-fatal): {exc}")
+            await _log("warning", f"Text trigger failed (non-fatal): {exc}")
     
     # Start the greeting trigger in background
     asyncio.create_task(_trigger_greeting_on_connect())

@@ -111,7 +111,8 @@ def _build_session(tools: list, system_prompt: str) -> AgentSession:
     """
     model_name = os.getenv("GEMINI_MODEL", "gemini-2.0-flash-exp")
     voice_name = os.getenv("GEMINI_TTS_VOICE", "Aoede")
-    use_realtime = os.getenv("USE_GEMINI_REALTIME", "true").lower() == "true"
+    # CRITICAL: Gemini Live WebSocket is timing out. Force pipeline mode.
+    use_realtime = os.getenv("USE_GEMINI_REALTIME", "false").lower() == "true"
     logger.info("Gemini config: model=%s, voice=%s, realtime=%s", model_name, voice_name, use_realtime)
 
     # Try Gemini Live (native audio) first

@@ -122,7 +122,8 @@ def _build_session(tools: list, system_prompt: str) -> AgentSession:
             api_key = os.getenv("GOOGLE_API_KEY", "")
             if not api_key:
                 raise ValueError("GOOGLE_API_KEY not set")
-
+            
+            logger.info("API key loaded: %s***", api_key[:10] if api_key else "NONE")
             realtime_cls = _google_realtime or _google_beta_realtime
             logger.info("Initializing Gemini Live with model=%s, voice=%s", model_name, voice_name)
             model = realtime_cls(
@@ -314,13 +315,24 @@ async def entrypoint(ctx: agents.JobContext) -> None:
             agent=OutboundAssistant(instructions=system_prompt),
         )
 
-    try:
-        await session.start(**_session_kwargs)
-        await _log("info", "Agent session started — AI ready")
-    except Exception as exc:
-        await _log("error", f"Session start FAILED: {exc}")
-        ctx.shutdown()
-        return
+    # Try to start session with retry logic for Gemini Live timeouts
+    max_retries = 3
+    retry_count = 0
+    while retry_count < max_retries:
+        try:
+            await _log("info", f"Starting agent session (attempt {retry_count + 1}/{max_retries})...")
+            await session.start(**_session_kwargs)
+            await _log("info", "Agent session started — AI ready")
+            break
+        except Exception as exc:
+            retry_count += 1
+            if retry_count >= max_retries:
+                await _log("error", f"Session start FAILED after {max_retries} attempts: {exc}")
+                ctx.shutdown()
+                return
+            else:
+                await _log("warning", f"Session start attempt {retry_count} failed, retrying: {exc}")
+                await asyncio.sleep(2)  # Wait 2 seconds before retry
 
     # ── Keep session alive until SIP participant actually leaves ─────────────
     # Without this block, the entrypoint returns and the process spins down.

@@ -109,11 +109,9 @@ def _build_session(tools: list, system_prompt: str) -> AgentSession:
     2. ContextWindowCompressionConfig — prevents freeze when context fills up
     3. RealtimeInputConfig with END_SENSITIVITY_LOW + 2s silence threshold
     """
-    model_name = os.getenv("GEMINI_MODEL", "gemini-2.0-flash-exp")
+    model_name = os.getenv("GEMINI_MODEL", "gemini-3.1-flash-live-preview")
     voice_name = os.getenv("GEMINI_TTS_VOICE", "Aoede")
-    # CRITICAL: Gemini Live WebSocket is timing out. Force pipeline mode.
-    use_realtime = os.getenv("USE_GEMINI_REALTIME", "false").lower() == "true"
-    logger.info("Gemini config: model=%s, voice=%s, realtime=%s", model_name, voice_name, use_realtime)
+    use_realtime = os.getenv("USE_GEMINI_REALTIME", "true").lower() == "true"
 
     # Try Gemini Live (native audio) first
     if use_realtime and (_google_realtime or _google_beta_realtime):
@@ -123,10 +121,8 @@ def _build_session(tools: list, system_prompt: str) -> AgentSession:
             api_key = os.getenv("GOOGLE_API_KEY", "")
             if not api_key:
                 raise ValueError("GOOGLE_API_KEY not set")
-            
-            logger.info("API key loaded: %s***", api_key[:10] if api_key else "NONE")
+
             realtime_cls = _google_realtime or _google_beta_realtime
-            logger.info("Initializing Gemini Live with model=%s, voice=%s", model_name, voice_name)
             model = realtime_cls(
                 model=model_name,
                 api_key=api_key,
@@ -145,15 +141,24 @@ def _build_session(tools: list, system_prompt: str) -> AgentSession:
                     ),
                 ),
             )
-            logger.info("Gemini Live model initialized successfully")
             logger.info("Using Gemini Live (native audio) model: %s", model_name)
+
+            # Add Google TTS so session.say() can deliver the greeting instantly
+            tts_instance = None
+            if _google_tts:
+                try:
+                    tts_instance = _google_tts(voice_name=voice_name)
+                    logger.info("Google TTS created (voice=%s) for greeting delivery", voice_name)
+                except Exception as tts_exc:
+                    logger.warning("Could not create Google TTS (non-fatal): %s", tts_exc)
+
             return AgentSession(
                 llm=model,
+                tts=tts_instance,
                 tools=tools,
             )
         except Exception as exc:
-            logger.error("Gemini Live setup FAILED: %s", exc, exc_info=True)
-            logger.warning("Falling back to pipeline (STT + LLM + TTS)")
+            logger.warning("Gemini Live setup failed, falling back to pipeline: %s", exc)
 
     # Pipeline fallback (STT → LLM → TTS)
     if _google_llm and _deepgram_stt and _google_tts:
@@ -212,8 +217,23 @@ async def entrypoint(ctx: agents.JobContext) -> None:
             custom_prompt=system_prompt,
         )
 
-    # ── System prompt is passed directly to Gemini Live ────
-    # No modifications needed — Gemini will handle greeting naturally
+    # ── Extract greeting & wrap prompt to prevent Gemini proactive speech ────
+    # Gemini Live interprets first-person text in instructions as dialogue to
+    # generate immediately.  The LiveKit plugin drops that unsolicited audio
+    # ("received server content but no active generation") AND the session
+    # becomes completely unresponsive afterwards.  Fix: deliver the greeting
+    # via TTS ourselves and tell Gemini the greeting was already spoken.
+    _greeting_text = system_prompt.split('\n\n')[0].strip()
+    system_prompt = (
+        "[LIVE CALL INSTRUCTION]\n"
+        "Your opening greeting has ALREADY been spoken to the caller by the "
+        "phone system. Do NOT repeat or re-generate the opening greeting line.\n"
+        "Wait SILENTLY until you hear the caller's voice in the audio stream.\n"
+        "When the caller responds (Hello, Speaking, Haan, etc.), continue the "
+        "conversation from AFTER the opening greeting using the script below.\n"
+        "CRITICAL: Generate ZERO audio before you hear the caller.\n\n"
+        + system_prompt
+    )
 
     # Load enabled tools
     enabled_tools = []
@@ -316,24 +336,24 @@ async def entrypoint(ctx: agents.JobContext) -> None:
             agent=OutboundAssistant(instructions=system_prompt),
         )
 
-    # Try to start session with retry logic for Gemini Live timeouts
-    max_retries = 3
-    retry_count = 0
-    while retry_count < max_retries:
+    try:
+        await session.start(**_session_kwargs)
+        await _log("info", "Agent session started — AI ready")
+    except Exception as exc:
+        await _log("error", f"Session start FAILED: {exc}")
+        ctx.shutdown()
+        return
+
+    # ── Deliver greeting immediately via TTS ─────────────────────────────────
+    # Gemini Live's proactive speech is dropped by the plugin, so we speak the
+    # greeting ourselves through Google TTS.  This fires within ~1 s of the
+    # call being answered — no 14-second silence.
+    if _greeting_text:
         try:
-            await _log("info", f"Starting agent session (attempt {retry_count + 1}/{max_retries})...")
-            await session.start(**_session_kwargs)
-            await _log("info", "Agent session started — AI ready")
-            break
+            await session.say(_greeting_text, allow_interruptions=True)
+            await _log("info", "Greeting delivered via TTS")
         except Exception as exc:
-            retry_count += 1
-            if retry_count >= max_retries:
-                await _log("error", f"Session start FAILED after {max_retries} attempts: {exc}")
-                ctx.shutdown()
-                return
-            else:
-                await _log("warning", f"Session start attempt {retry_count} failed, retrying: {exc}")
-                await asyncio.sleep(2)  # Wait 2 seconds before retry
+            await _log("warning", f"TTS greeting failed (non-fatal): {exc}")
 
     # ── Keep session alive until SIP participant actually leaves ─────────────
     # Without this block, the entrypoint returns and the process spins down.

@@ -109,9 +109,10 @@ def _build_session(tools: list, system_prompt: str) -> AgentSession:
     2. ContextWindowCompressionConfig — prevents freeze when context fills up
     3. RealtimeInputConfig with END_SENSITIVITY_LOW + 2s silence threshold
     """
-    model_name = os.getenv("GEMINI_MODEL", "gemini-3.1-flash-live-preview")
+    model_name = os.getenv("GEMINI_MODEL", "gemini-2.0-flash-exp")
     voice_name = os.getenv("GEMINI_TTS_VOICE", "Aoede")
     use_realtime = os.getenv("USE_GEMINI_REALTIME", "true").lower() == "true"
+    logger.info("Gemini config: model=%s, voice=%s, realtime=%s", model_name, voice_name, use_realtime)
 
     # Try Gemini Live (native audio) first
     if use_realtime and (_google_realtime or _google_beta_realtime):
@@ -149,7 +150,8 @@ def _build_session(tools: list, system_prompt: str) -> AgentSession:
                 tools=tools,
             )
         except Exception as exc:
-            logger.warning("Gemini Live setup failed, falling back to pipeline: %s", exc)
+            logger.error("Gemini Live setup FAILED: %s", exc, exc_info=True)
+            logger.warning("Falling back to pipeline (STT + LLM + TTS)")
 
     # Pipeline fallback (STT → LLM → TTS)
     if _google_llm and _deepgram_stt and _google_tts:

@@ -316,6 +316,17 @@ async def entrypoint(ctx: agents.JobContext) -> None:
         ctx.shutdown()
         return
 
+    # ── Speak greeting immediately after session starts ───────────────────────
+    # Gemini Live is reactive and waits for audio input. To speak immediately,
+    # we use session.say() with TTS for the initial greeting.
+    if phone_number and lead_name:
+        try:
+            greeting = f"नमस्ते {lead_name}ji, मैं शुभ बोल रहा हूँ, महेश बिल्डर से, अभी-अभी आपने अंधेरी इस्ट, जेबी नगर प्रोजेक्ट के लिए enquiry डाली थी… तो मैं तुरंत आपसे जुड़ रहा हूँ, आपकी requirement समझने के लिए… क्या अभी बात कर सकते है ?"
+            await session.say(greeting)
+            await _log("info", "Initial greeting spoken via TTS")
+        except Exception as exc:
+            await _log("warning", f"Greeting failed (non-fatal): {exc}")
+
 
     # ── Keep session alive until SIP participant actually leaves ─────────────
     # Without this block, the entrypoint returns and the process spins down.

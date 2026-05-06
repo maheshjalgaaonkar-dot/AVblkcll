@@ -205,6 +205,15 @@ async def entrypoint(ctx: agents.JobContext) -> None:
             service_type=service_type,
             custom_prompt=system_prompt,
         )
+    
+    # Remove greeting from system prompt to stop proactive speech attempts
+    # Gemini Live is reactive - it will speak the greeting when caller speaks first
+    # This prevents "received server content but no active generation" warnings
+    if system_prompt.startswith("नमस्ते"):
+        # Find the first question mark or end of greeting
+        lines = system_prompt.split('\n')
+        filtered_lines = [line for line in lines if not line.startswith("नमस्ते")]
+        system_prompt = '\n'.join(filtered_lines).strip()
 
 
     # Load enabled tools
@@ -315,17 +324,6 @@ async def entrypoint(ctx: agents.JobContext) -> None:
         await _log("error", f"Session start FAILED: {exc}")
         ctx.shutdown()
         return
-
-    # ── Speak greeting immediately after session starts ───────────────────────
-    # Gemini Live is reactive and waits for audio input. To speak immediately,
-    # we use session.say() with TTS for the initial greeting.
-    if phone_number and lead_name:
-        try:
-            greeting = f"नमस्ते {lead_name}ji, मैं शुभ बोल रहा हूँ, महेश बिल्डर से, अभी-अभी आपने अंधेरी इस्ट, जेबी नगर प्रोजेक्ट के लिए enquiry डाली थी… तो मैं तुरंत आपसे जुड़ रहा हूँ, आपकी requirement समझने के लिए… क्या अभी बात कर सकते है ?"
-            await session.say(greeting)
-            await _log("info", "Initial greeting spoken via TTS")
-        except Exception as exc:
-            await _log("warning", f"Greeting failed (non-fatal): {exc}")
 
 
     # ── Keep session alive until SIP participant actually leaves ─────────────

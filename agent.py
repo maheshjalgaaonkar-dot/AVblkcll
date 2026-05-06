@@ -316,33 +316,6 @@ async def entrypoint(ctx: agents.JobContext) -> None:
         ctx.shutdown()
         return
 
-    # ── Trigger immediate greeting when SIP participant connects ───────────────
-    # Gemini Live is reactive and waits for audio input. We trigger it when
-    # the SIP participant (caller) connects by sending a brief text message.
-    async def _trigger_greeting_on_connect():
-        """Wait for SIP participant to connect, then trigger greeting."""
-        if not phone_number:
-            return
-        
-        _sip_identity = f"sip_{phone_number}"
-        await _log("info", f"Waiting for SIP participant {_sip_identity} to connect...")
-        
-        # Wait for SIP participant to join
-        while _sip_identity not in ctx.room.remote_participants:
-            await asyncio.sleep(0.1)
-        
-        await _log("info", f"SIP participant {_sip_identity} connected, triggering greeting")
-        
-        # Send a brief text trigger to wake up Gemini Live
-        try:
-            # Send a minimal text input through the realtime model's conversation
-            await session.llm.conversation.send_text(" ")
-            await _log("info", "Text trigger sent to wake up Gemini Live")
-        except Exception as exc:
-            await _log("warning", f"Text trigger failed (non-fatal): {exc}")
-    
-    # Start the greeting trigger in background
-    asyncio.create_task(_trigger_greeting_on_connect())
 
     # ── Keep session alive until SIP participant actually leaves ─────────────
     # Without this block, the entrypoint returns and the process spins down.

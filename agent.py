@@ -335,8 +335,8 @@ async def entrypoint(ctx: agents.JobContext) -> None:
         
         # Send a brief text trigger to wake up Gemini Live
         try:
-            # Send a minimal text input to trigger the agent's response
-            await session.conversation.send_text(" ")
+            # Send a minimal text input through the realtime model's conversation
+            await session.llm.conversation.send_text(" ")
             await _log("info", "Text trigger sent to wake up Gemini Live")
         except Exception as exc:
             await _log("warning", f"Text trigger failed (non-fatal): {exc}")
